@@ -22,7 +22,7 @@ namespace SoccerBot
             // If no cameras assigned, find all in scene
             if (_cameras.Count == 0)
             {
-                _cameras.AddRange(FindObjectsOfType<Camera>());
+                _cameras.AddRange(FindObjectsByType<Camera>(FindObjectsSortMode.None));
             }
 
             // Enable only the first camera

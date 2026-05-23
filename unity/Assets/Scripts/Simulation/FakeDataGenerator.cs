@@ -22,7 +22,6 @@ namespace SoccerBot
         // ── Simulation Parameters ───────────────────────────
         [Header("Robot Movement")]
         [SerializeField] private float _moveSpeed = 2.0f;
-        [SerializeField] private float _turnSpeed = 45.0f;
         [SerializeField] private float _fieldBoundary = 8.0f;
 
         [Header("Shooter Simulation")]
@@ -202,14 +201,13 @@ namespace SoccerBot
         private void UpdateVisionSimulation()
         {
             // Fake target detection: sometimes sees target, sometimes not
-            bool hasTarget = (Mathf.Sin(_time * 0.7f) > 0.2f);
-
+            // Always show target in simulation (varying values for realism)
             VisionData = new VisionData
             {
-                hasTarget = hasTarget,
-                targetX = hasTarget ? Mathf.Sin(_time * 1.3f) * 5f : 0f,
-                targetY = hasTarget ? Mathf.Cos(_time * 0.9f) * 3f : 0f,
-                distance = hasTarget ? 3.0f + Mathf.Sin(_time * 0.3f) * 2f : 0f
+                hasTarget = true,
+                targetX = Mathf.Sin(_time * 1.3f) * 5f,
+                targetY = Mathf.Cos(_time * 0.9f) * 3f,
+                distance = 3.0f + Mathf.Sin(_time * 0.3f) * 2f
             };
         }
 

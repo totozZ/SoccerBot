@@ -64,7 +64,7 @@ namespace SoccerBot
             // If no IDataSource found on this GameObject, try to find FakeDataGenerator
             if (_dataSource == null)
             {
-                var fakeGen = FindObjectOfType<FakeDataGenerator>();
+                var fakeGen = FindAnyObjectByType<FakeDataGenerator>();
                 if (fakeGen != null)
                 {
                     _dataSource = fakeGen;
