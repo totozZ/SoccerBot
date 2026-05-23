@@ -1,0 +1,30 @@
+# Unity
+unity/Library/
+unity/Temp/
+unity/Obj/
+unity/Build/
+unity/Builds/
+unity/Logs/
+unity/UserSettings/
+unity/*.apk
+unity/*.aab
+
+# Visual Studio / VS Code
+*.sln
+*.csproj
+*.unityproj
+*.userprefs
+.vs/
+.vscode/
+
+# WPILib / Gradle
+robot/build/
+robot/.gradle/
+robot/gradle/
+robot/gradlew
+robot/gradlew.bat
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
