@@ -1,185 +1,231 @@
-# SoccerBot — Unity 可视化端开发计划
+# SoccerBot — VR 足球机器人 AI 推演沙盒
 
-> 版本: v2.0 | 日期: 2026-05-23 | 状态: Unity 开发阶段
-
----
-
-## 项目定位
-
-**一句话**：AdvantageScope 的 3D VR 增强版。
-
-已有的 AdvantageScope 通过 NetworkTables 在电脑屏幕上展示机器人 2D/3D 位姿。本项目在这个思路上更进一步：
-- Unity 3D 场景接管机器人位姿渲染
-- Meta Quest 2 提供沉浸式 VR 观察视角
-- 根据炮台发射角度 + 速度反推足球抛物线轨迹并可视化
+> 版本: v4.0 | 日期: 2026-05-24 | 状态: 方向重定，场景待重建
+> 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
 
-## 使用场景
+## 一句话项目定位
 
-| 角色 | 设备 | 操作 |
+真机器人发射 → Unity 接管为虚拟球 → AI 队友/对手按预设剧本推演传球走向 → 评分 → 全程 Meta Quest 2 沉浸观看。
+
+不是 AdvantageScope 增强版（v3.0 的旧定位已废弃）。是 **VR AR 训练沙盒**：用真硬件触发，用虚拟世界推演。
+
+---
+
+## 演示故事板（3 分钟视频）
+
+| 时间 | 镜头 | 解说 |
 |------|------|------|
-| **操作手** | 电脑 + 手柄 | 操控机器人移动 / 瞄准 / 发射 |
-| **观察者** | Meta Quest 2 | 进入 VR 场景，自由观察机器人状态和足球轨迹 |
-
-机器人通过 WPILib / C++ 控制，将 Odometry / 炮台状态通过 NetworkTables 实时发布。Unity 端订阅 NT 数据，驱动 3D 模型。
+| 0:00–0:15 | 真机器人 + 戴 Quest 2 的人 | 痛点：足球机器人训练缺对手、缺场地、缺安全空间 |
+| 0:15–0:45 | 真机器人发射 → Unity/VR 同步出现虚拟球飞出 | 虚实结合：真硬件触发 + 虚拟推演 |
+| 0:45–1:45 | 虚拟队友接球 → 三个剧本之一播放（射门成功 / 被拦截 / 射偏） | AI 推演比赛走向 |
+| 1:45–2:15 | 评分浮窗 + 慢动作回放 | 量化训练结果 |
+| 2:15–2:45 | PPT 渲染：4v4 完整阵型、真球传感器、UWB 定位 | 未来展望 |
 
 ---
 
-## 数据链路
+## 当前进度总览（v4.0）
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| Unity 项目骨架 | ✅ 完成 | Unity 6000.4.7f1 + URP 17.4 + XR 包就绪 |
+| 数据模型 + 接口 | ✅ 完成 | RobotData / IDataSource 等 |
+| GameManager 中枢 | ✅ 完成 | 单例 + 事件系统，OnShotFired 事件可复用 |
+| FakeDataGenerator | ✅ 完成 | 无机器人时独立运行调试 |
+| 机器人 3D 渲染 | ✅ 完成 | 海绵宝宝程序化模型 + 炮台动画 |
+| 球轨迹反推 | ✅ 完成 | 抛物线计算 + LineRenderer |
+| 相机 / 拖尾 / UI | ✅ 完成 | 复用，无改动 |
+| **Main.unity 场景** | ❌ **丢失** | Hierarchy 只剩 Camera + Light，待重建 |
+| **虚拟队友 / 对手** | ❌ 未做 | 1 队友 + 1 对手，复用 CharacterBuilder 染色 |
+| **剧本系统** | ❌ 未做 | ScenarioPlayer + 3 个 ScriptableObject 剧本 |
+| **评分 UI** | ❌ 未做 | 剧本结束后弹分数 + 回放 |
+| **Quest 2 部署** | ⬜ 待做 | XR Origin + APK Build + 控制器输入 |
+| NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
+
+---
+
+## 锁定的方向决策
+
+| 维度 | 决策 |
+|---|---|
+| **真球 / 摄像头 / 智能足球** | **完全砍掉**。机器人发射时 Unity 直接生成虚拟球 |
+| **真机器人** | **保留**。海绵宝宝当输入设备，发射触发 NT `is_firing=true` → Unity 生成虚拟球 |
+| **虚拟球员** | 1 队友（蓝队）+ 1 对手（红队）。复用 [CharacterBuilder](unity/Assets/Scripts/Robot/CharacterBuilder.cs) 改颜色 |
+| **AI 推演** | 3 个**预设剧本**切换：①成功传球得分 ②被对手拦截 ③队友射偏。按按钮选/随机播。不做状态机/RL |
+| **球场** | 3×3m 室内最小尺寸，胶带框出来即可 |
+| **Quest 2** | **必做**（项目题目就是 VR 方向）。XR Origin 替换主相机，APK 部署 |
+| **NT SDK** | 本期不集成，FakeDataGenerator 占位。真机联调列入展望 |
+
+> 方向锁定原因详见 [memory/project_competition_context.md](memory/project_competition_context.md)。萌芽赛道评审看的是"概念新颖 + 演示视频"，不是产品成熟度。
+
+---
+
+## 数据流（v4.0）
 
 ```
-┌─────────────────────────────────────────────┐
-│  RoboRIO C++ (用户侧)                        │
-│                                              │
-│  robot/pose/x        (double)               │
-│  robot/pose/y        (double)               │
-│  robot/pose/rotation (double)               │
-│  shooter/angle       (double)               │
-│  shooter/speed       (double)               │
-│  shooter/is_firing   (bool)                 │
-│  ball/*  (if computed on robot side)        │
-│                                              │
-│  ── NetworkTables Server ──►                 │
-└──────────────────────────────┬──────────────┘
-                               │
-            ┌──────────────────▼──────────────────┐
-            │  Unity C# (本项目)                    │
-            │                                      │
-            │  NTManager.cs                        │
-            │    ├─ 读取 robot/pose → 更新 Transform │
-            │    ├─ 读取 shooter/* → 炮台动画       │
-            │    └─ 检测 is_firing → 反推轨迹       │
-            │                                      │
-            │  轨迹反推公式:                        │
-            │    x(t) = v0·cos(θ)·t                │
-            │    y(t) = v0·sin(θ)·t - ½g·t²        │
-            │    结合炮台朝向 + 仰角 + 轮速 → 3D 抛物线 │
-            └──────────────────┬───────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │   Meta Quest 2 VR   │
-                    │   第一/第三人称观察   │
-                    └─────────────────────┘
+┌─────────────────────────────┐
+│  真海绵宝宝机器人（旁边桌上）   │
+│  发射键按下 → NT is_firing=true│
+└──────────────┬──────────────┘
+               │
+   ┌───────────▼──────────────┐
+   │  Unity (PC build)        │
+   │                          │
+   │  GameManager.OnShotFired │
+   │     │                    │
+   │     ├─► 生成虚拟球 ───┐   │
+   │     │                ▼   │
+   │     │  ScenarioPlayer    │
+   │     │  随机选 1/3 剧本    │
+   │     │  ├─ 成功传球        │
+   │     │  ├─ 被拦截          │
+   │     │  └─ 射偏            │
+   │     │     │              │
+   │     │     ▼              │
+   │     │  虚拟队友/对手关键帧动画│
+   │     │     │              │
+   │     │     ▼              │
+   │     │  评分 UI + 回放       │
+   └─────┼────┬────────────────┘
+         │    │
+         ▼    ▼
+   ┌─────────────┐
+   │ Meta Quest 2│  ← 同一份 Unity build 部署 APK
+   │ 沉浸式观看   │
+   └─────────────┘
 ```
 
 ---
 
-## 核心功能
+## 开发阶段
 
-| 功能 | 说明 | 状态 |
-|------|------|------|
-| NT 数据接收 | 订阅 `/SmartDashboard/robot/*` `/shooter/*` | 骨架就绪 |
-| 机器人 3D 位姿 | 类似 AdvantageScope，用 Transform 渲染 Odometry | ✅ |
-| 炮台动画 | 俯仰/旋转/飞轮旋转动画 | ✅ |
-| 足球轨迹反推 | 角度+速度 → 抛物线 → LineRenderer | ✅ |
-| 独立模拟运行 | FakeDataGenerator，无机器人也可调试 | ✅ |
-| VR 观察 | Quest 2 部署，自由移动视角 | 待做 |
-| 双人协作 | 操作手 PC + 观察者 VR 同时连接 NT | 待联调 |
-
----
-
-## Unity 开发阶段
-
-| Phase | 内容 | 状态 |
-|-------|------|------|
-| U1 | 项目骨架 + 脚本架构 | ✅ 完成 |
-| U2 | FakeDataGenerator 独立运行 | ✅ 完成 |
-| U3 | 轨迹反推渲染（抛物线可视化） | ✅ 完成 |
-| U4 | NTManager 对接真机 NetworkTables | ⬜ 待用户机器人就绪 |
-| U5 | Meta Quest 2 VR 部署 | ⬜ 待做 |
-| U6 | 联调 & 性能优化 | ⬜ 待做 |
+| Phase | 内容 | 工期估计 |
+|-------|------|---------|
+| **P1** | 重建 [Main.unity](unity/Assets/Scenes/Main.unity)，按上次给的 7 步在 Editor 里点出来 | 0.5 天 |
+| **P2** | 加 1 队友 + 1 对手 GameObject（CharacterBuilder 改色版） | 0.5 天 |
+| **P3** | **剧本系统核心**：`ScenarioPlayer.cs` + `Scenario` ScriptableObject + 3 个剧本资产 | 2 天 |
+| **P4** | 虚拟球生成 + 监听 OnShotFired → 触发剧本播放 | 0.5 天 |
+| **P5** | 评分 UI + 慢动作回放（Time.timeScale = 0.3） | 1 天 |
+| **P6** | XR Origin 替换 Main Camera，PC 端先跑通 VR 视角 | 1 天 |
+| **P7** | Quest 2 APK 构建 + 控制器输入（按 Trigger 选剧本） | 1 天 |
+| **P8** | 性能优化（海绵宝宝 primitive 多，Quest 2 容易掉帧） | 1–2 天 |
+| **P9** | 演示视频拍摄 + 剪辑 | 1 天 |
+| **总计** | | **~9–10 天** |
 
 ---
 
-## 文件结构
+## 剧本系统设计
+
+每个剧本是一个 ScriptableObject，包含一串关键帧：
+
+```csharp
+// Scenario.cs (待写)
+[CreateAssetMenu(menuName = "SoccerBot/Scenario")]
+public class Scenario : ScriptableObject
+{
+    public string scenarioName;        // "成功传球"
+    public ScenarioOutcome outcome;    // Score / Intercepted / Missed
+    public int finalScore;             // 100 / 30 / 50
+    public List<Keyframe> keyframes;   // 时间轴关键帧
+}
+
+[Serializable]
+public struct Keyframe
+{
+    public float t;                    // 时间 (秒)
+    public Target target;              // Ball / Teammate / Opponent
+    public Vector3 position;
+    public Quaternion rotation;
+    public string action;              // "shoot" / "intercept" / "score"
+}
+```
+
+**3 个剧本预设值（粗略）**：
+
+| 剧本 | 时长 | 关键事件 | 评分 |
+|---|---|---|---|
+| 成功传球 | 4s | 球→队友→射门→进球 | 100 |
+| 被拦截 | 3s | 球飞行中被对手抢截 | 30 |
+| 队友射偏 | 5s | 球→队友→射门→偏出 | 50 |
+
+`ScenarioPlayer.cs` 只做关键帧插值，不需要状态机。简单到不能再简单。
+
+---
+
+## 文件结构（v4.0）
 
 ```
 SoccerBot/
-├── README.md                         # 项目说明（已格式化）
-├── PLAN.md                           # 本文件
+├── README.md                              # 项目说明（v4.0）
+├── PLAN.md                                # 本文件
 ├── .gitignore
-├── robot/                            # C++ 机器人端（用户负责）
-│   ├── build.gradle
-│   ├── settings.gradle
-│   ├── vendordeps/
-│   │   └── Phoenix6-frc2026-latest.json
-│   └── src/main/
-│       ├── include/
-│       │   ├── Constants.h           # CAN ID / PID / NT Key 常量
-│       │   ├── Robot.h
-│       │   ├── RobotContainer.h
-│       │   ├── subsystems/
-│       │   │   ├── DriveSubsystem.h
-│       │   │   ├── ShooterSubsystem.h
-│       │   │   └── VisionSubsystem.h
-│       │   └── commands/
-│       │       ├── DefaultDriveCommand.h
-│       │       ├── ShootCommand.h
-│       │       └── AutoAlignCommand.h
-│       └── cpp/                      # 用户自行填充实现
-│           ├── Robot.cpp
-│           ├── RobotContainer.cpp
-│           ├── subsystems/
-│           └── commands/
-└── unity/                            # Unity VR 可视化端（本项目）
+├── robot/                                 # ⬇️ 优先级降低，本期可空
+└── unity/
     ├── Assets/
+    │   ├── Scenes/
+    │   │   └── Main.unity                 # ❌ 待重建
     │   └── Scripts/
-    │       ├── Core/
-    │       │   ├── RobotData.cs      # 数据模型
-    │       │   ├── IDataSource.cs    # 数据源接口
-    │       │   ├── GameManager.cs    # 单例中枢
-    │       │   ├── NTManager.cs      # NetworkTables 客户端
-    │       │   └── DataBuffer.cs     # 数据平滑
-    │       ├── Robot/
-    │       │   ├── RobotController.cs    # Transform 更新
-    │       │   ├── RobotVisuals.cs       # 炮台动画
-    │       │   └── RobotPathTrail.cs     # 运动拖尾
-    │       ├── Ball/
-    │       │   ├── BallController.cs     # 足球控制
-    │       │   └── TrajectoryRenderer.cs # 轨迹线渲染
+    │       ├── Core/                      # ✅ 已完成（保持不动）
+    │       │   ├── RobotData.cs
+    │       │   ├── IDataSource.cs
+    │       │   ├── GameManager.cs
+    │       │   ├── NTManager.cs           # ⬇️ 本期不用
+    │       │   └── DataBuffer.cs
+    │       ├── Robot/                     # ✅ 已完成
+    │       │   ├── RobotController.cs
+    │       │   ├── RobotVisuals.cs
+    │       │   ├── RobotPathTrail.cs
+    │       │   └── CharacterBuilder.cs
+    │       ├── Ball/                      # ✅ 已完成
+    │       │   ├── BallController.cs
+    │       │   └── TrajectoryRenderer.cs
     │       ├── UI/
-    │       │   └── StatusPanel.cs
-    │       ├── Camera/
-    │       │   ├── SmoothFollow.cs
-    │       │   └── CameraSwitcher.cs
-    │       └── Simulation/
-    │           └── FakeDataGenerator.cs  # 独立运行模拟数据
-    └── Packages/
-        └── manifest.json             # Unity 6 URP + XR 依赖
+    │       │   ├── StatusPanel.cs         # ✅
+    │       │   └── ScorePanel.cs          # ❌ 待写：评分 UI
+    │       ├── Camera/                    # ✅ 已完成
+    │       ├── Simulation/
+    │       │   └── FakeDataGenerator.cs   # ✅
+    │       ├── Scenario/                  # ❌ 全部待写
+    │       │   ├── Scenario.cs            # ScriptableObject 定义
+    │       │   ├── ScenarioPlayer.cs      # 关键帧插值播放器
+    │       │   └── ScenarioTrigger.cs     # 监听 OnShotFired 触发
+    │       └── XR/                        # ❌ 待写
+    │           └── XRSetup.cs             # XR Origin 配置
+    ├── Assets/Scenarios/                  # ❌ 待建
+    │   ├── ScoreSuccess.asset
+    │   ├── Intercepted.asset
+    │   └── ShotMissed.asset
+    └── Packages/manifest.json
 ```
 
 ---
 
-## 轨迹反推算法
+## 立即下一步
 
-```
-已知条件（从 NT 读取）：
-  - robot_pose  (x₀, y₀, θ₀)    机器人当前位置和朝向
-  - hood_angle  (α)              炮台仰角
-  - flywheel_rpm (ω)             飞轮转速 → 初速度 v₀
-  - firing (bool)                发射信号上升沿
+**P1: 重建 [Main.unity](unity/Assets/Scenes/Main.unity)**
 
-计算：
-  v₀ = RPM_to_velocity(ω)            // 轮速→线速度转换
-  θ = θ₀ + hood_angle                // 实际发射仰角（世界坐标）
+上次 Hierarchy 丢了，恢复目录在 [unity/Assets/_Recovery/0.unity](unity/Assets/_Recovery/0.unity) 只剩 Camera + Light。重建步骤已经给过，关键是：
 
-  抛物线参数方程 (t = 时间):
-    x(t) = v₀ * cos(θ) * t
-    y(t) = v₀ * sin(θ) * t - 0.5 * g * t²
+1. 新建场景 → 保存为 `Assets/Scenes/Main.unity`
+2. **GameManager** GameObject → 挂 `GameManager` + `FakeDataGenerator`
+3. **Robot** GameObject → 挂 `RobotController` + `RobotVisuals` + `RobotPathTrail` + `CharacterBuilder`
+4. **Ball** Sphere → 挂 `BallController` + `TrajectoryRenderer`
+5. **Main Camera** → 挂 `SmoothFollow` + `CameraSwitcher`
+6. **Ground** Plane (Scale 2,1,2 = 20×20m，**之后改成 3×3m**)
+7. **Canvas** → UI Text-TMP × 4 → 挂 `StatusPanel`
 
-  结合 heading 方向，转为 3D 向量。
-
-Unity 渲染：
-  TrajectoryRenderer 每帧计算 100 个轨迹点 → LineRenderer 绘制
-```
+完成后 `Ctrl+S` 保存 + Build Profiles → Add Open Scene + git commit。
 
 ---
 
-## 下一步
+## 未来展望（PPT 占位用）
 
-1. 用户在 Unity Hub 创建 Unity 6000.3 URP 项目（路径：`SoccerBot/unity/`）
-2. 选择 Platforms：Windows Build Support + Android Build Support
-3. 用简单几何体搭建场景（Ground / Robot / Ball / Goal）
-4. 挂载脚本 → Play → 观察 FakeDataGenerator 驱动的机器人
-5. 后续接入真实 NetworkTables 联调
+下面这些列在演示视频结尾的"展望"页，当作加分项展示，但本期不做：
+
+- **真智能足球**：3D 打印外壳 + UWB 定位传感器 + LAN 数据上报，替代虚拟球
+- **纯视觉球检测**：USB 俯视摄像头 + OpenCV 颜色/ArUco → 不需要传感器
+- **NT 双向通信**：Unity 把虚拟队友/对手位置回传机器人，机器人自动瞄准
+- **真 AI 决策**：状态机 → 强化学习，替代预设剧本
+- **4v4 完整阵型**：扩展到真实比赛规模
+- **多人协作**：多台 Quest 2 + 多机器人同场训练

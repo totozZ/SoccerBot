@@ -1,99 +1,97 @@
-# SoccerBot — FRC 足球机器人 VR 可视化系统
+# SoccerBot — VR 足球机器人 AI 推演沙盒
 
-> 类似 AdvantageScope 的 3D/VR 增强版，通过 NetworkTables 实时渲染机器人位姿与足球轨迹。
-
----
-
-## 项目简介
-
-| 部分 | 说明 | 负责 |
-|------|------|------|
-| **机器人端** | FRC 底盘 + 炮台，WPILib / C++，RoboRIO 2.0 | 用户 |
-| **可视化端** | Unity 3D + Meta Quest 2，接收 NT 数据实时渲染 | 本项目 |
-
-**协作模式**：一人电脑操控机器人，一人佩戴 Quest 2 进入 VR 场景观察机器人位姿、炮台朝向、足球发射轨迹。
+> **互联网+ 大学生创新创业大赛 · 萌芽赛道** 参赛项目
+>
+> 真机器人触发 + 虚拟世界推演 + Meta Quest 2 沉浸观看的 AR 训练沙盒。
 
 ---
 
-## 机器人结构
+## 项目定位
 
-```
-        ┌──────────────┐
-        │    炮台       │
-        │ • 俯仰 (Hood) │
-        │ • 旋转 (Yaw)  │
-        │ • 加旋 (Flywheel) │
-        │ • 发射 (Fire) │
-        └──────┬───────┘
-               │
-   ┌───────────┴───────────┐
-   │     FRC 底盘          │
-   │  • Mecanum / Diff    │
-   │  • Falcon 500 × 4    │
-   │  • Odometry          │
-   └───────────────────────┘
-```
+**痛点**：FRC 风格的足球机器人训练缺真实对手、缺安全场地、缺低成本练习方式。
+
+**方案**：用一台真机器人作为"输入设备"，发射动作触发 Unity 内的虚拟球，虚拟队友 / 对手按预设战术剧本演绎传球走向，最后给一个评分。整个过程在 Meta Quest 2 里沉浸式观看。
+
+**一句话**：硬件按一下，虚拟世界跑完一整场配合。
+
+---
+
+## 系统组成
+
+| 部分 | 说明 |
+|------|------|
+| **真海绵宝宝机器人** | 旁边桌上能动就行，发射键触发 NT 信号 |
+| **Unity 推演端** | 接收发射信号 → 生成虚拟球 → 选剧本 → 播放 → 评分 |
+| **Meta Quest 2** | 部署同一份 Unity APK，沉浸式观看推演过程 |
 
 ---
 
 ## 数据流
 
 ```
-[RoboRIO C++] ──NetworkTables Server──► [Unity C#] ──► [Quest 2 VR]
-      │                                       │
-  发布数据:                              接收后渲染:
-  • robot/pose/x,y,θ          →       机器人 3D 模型位姿
-  • shooter/angle,speed       →       炮台俯仰 + 飞轮旋转
-  • ball/*                    →       足球轨迹抛物线
+真机器人发射键
+      │
+      ▼
+NetworkTables: is_firing = true
+      │
+      ▼
+┌──────────────────────────────────┐
+│  Unity (PC + Quest 2 双端)         │
+│                                  │
+│  GameManager.OnShotFired         │
+│      │                           │
+│      ├─► 生成虚拟球（位置+速度）    │
+│      │                           │
+│      └─► ScenarioPlayer 选剧本    │
+│              │                   │
+│   ┌──────────┼──────────┐        │
+│   ▼          ▼          ▼        │
+│  成功传球    被拦截     射偏       │
+│   100分     30分       50分      │
+│      │       │         │         │
+│      └───────┼─────────┘         │
+│              ▼                   │
+│        评分 UI + 慢动作回放         │
+└──────────────────────────────────┘
 ```
-
-**核心逻辑**：
-1. 机器人通过 NT 发布 Pose 数据
-2. Unity 订阅后更新 3D 模型 Transform（类似 AdvantageScope 3D 视图）
-3. 发射时根据角度 + 速度反推抛物线轨迹并渲染
 
 ---
 
-## 功能
+## 核心功能
 
-- NetworkTables v4 实时通信
-- 机器人 Pose 3D 渲染（AdvantageScope 风格）
-- 炮台俯仰 / 旋转 / 发射动画
-- 足球轨迹反推与可视化（从角度+速度→抛物线）
-- Meta Quest 2 VR 观察
-- 内置模拟数据（无机器人时可独立运行）
+- **真机触发**：海绵宝宝机器人发射 → Unity 生成虚拟球
+- **AI 剧本推演**：3 个预设剧本（成功传球 / 被拦截 / 射偏），按钮或随机选
+- **虚拟队友 / 对手**：1v1 最小冲突阵型，复用海绵宝宝染色
+- **评分系统**：剧本结束弹分数 + 慢动作回放
+- **VR 沉浸观看**：Meta Quest 2 部署，全程第一人称
+- **独立调试**：FakeDataGenerator 让 Unity 端无机器人也能跑
 
 ---
 
 ## 技术栈
 
-| 层 | 技术 |
-|----|------|
-| 机器人控制 | WPILib 2026 / C++ |
-| 电机 | CTRE Phoenix 6 (Falcon 500) |
-| 视觉 | Limelight 3A |
-| 通信 | NetworkTables v4 |
-| 3D 引擎 | Unity 6000 LTS + URP |
-| VR | XR Interaction Toolkit + Quest 2 |
-| 脚本 | C# |
+| 层 | 技术 | 版本 |
+|----|------|------|
+| 机器人控制 | WPILib / C++ | 2026 |
+| 通信 | NetworkTables v4（本期 FakeData 顶） | — |
+| 3D 引擎 | Unity + URP | 6000.4.7f1 |
+| VR | XR Interaction Toolkit + Oculus | 3.4.1 / 4.5.4 |
+| 脚本 | C# | — |
 
 ---
 
 ## 快速开始
 
 ### 环境
-- Unity 6000.3 LTS + URP
-- Meta Quest 2（VR 阶段）
-- WPILib 2026 + JDK 17（机器人端）
+- Unity 6000.4.7f1 + URP
+- Meta Quest 2（VR 部署阶段）
 
 ### 独立运行（无机器人）
-Unity 内置 `FakeDataGenerator`：
-- 模拟机器人在场地巡逻
-- 每 5 秒自动发射足球
-- 完整轨迹可视化
+打开 `Assets/Scenes/Main.unity`（重建后）→ Play。
+内置 [FakeDataGenerator.cs](unity/Assets/Scripts/Simulation/FakeDataGenerator.cs) 模拟真机器人发射，每 5 秒触发一次剧本。
 
-### 连接真实机器人
-`NTManager.cs` 中填入 RoboRIO IP，Unity 自动连接 NT Server 同步数据。
+### 连接真机器人（后期）
+[NTManager.cs](unity/Assets/Scripts/Core/NTManager.cs) 中填入 RoboRIO IP，自动接管数据源。
 
 ---
 
@@ -102,17 +100,37 @@ Unity 内置 `FakeDataGenerator`：
 ```
 SoccerBot/
 ├── README.md
-├── PLAN.md
+├── PLAN.md                                # 详细开发计划与进度
 ├── .gitignore
-├── robot/                # 机器人端 C++（用户负责）
-│   └── src/main/
-│       └── include/subsystems/
-└── unity/                # Unity VR 可视化端（本项目）
-    └── Assets/Scripts/
-        ├── Core/         # GameManager, NTManager, DataBuffer
-        ├── Robot/        # RobotController, RobotVisuals
-        ├── Ball/         # BallController, TrajectoryRenderer
-        ├── Simulation/   # FakeDataGenerator
-        ├── UI/           # StatusPanel
-        └── Camera/       # SmoothFollow, CameraSwitcher
+├── robot/                                 # 机器人端（本期可空）
+└── unity/                                 # Unity 推演端（主战场）
+    └── Assets/
+        ├── Scenes/Main.unity              # ❌ 待重建
+        └── Scripts/
+            ├── Core/                      # ✅ 数据中枢、NT 骨架
+            ├── Robot/                     # ✅ 海绵宝宝机器人
+            ├── Ball/                      # ✅ 虚拟球 + 轨迹
+            ├── Simulation/                # ✅ FakeData 调试源
+            ├── UI/                        # ✅ 状态面板
+            ├── Camera/                    # ✅ 跟随相机
+            ├── Scenario/                  # ❌ 剧本系统（待写）
+            └── XR/                        # ❌ VR 适配（待写）
 ```
+
+---
+
+## 开发进度
+
+详见 [PLAN.md](PLAN.md)。
+
+**当前状态（2026-05-24）**：v3.0 脚本资产完成，但 Unity 场景丢失，方向重定为 v4.0 比赛推演沙盒。下一步重建场景 + 写剧本系统。
+
+---
+
+## 未来展望
+
+- 真智能足球（3D 打印外壳 + UWB 定位）
+- 纯视觉球检测（OpenCV 俯视摄像头）
+- NT 双向通信（Unity 反向控制机器人瞄准）
+- 状态机 / 强化学习替代预设剧本
+- 4v4 完整阵型 + 多人多机协作训练
