@@ -1,6 +1,21 @@
 # SoccerBot — VR 足球机器人 AI 推演沙盒
 
-> 版本: v4.0 | 日期: 2026-05-24 | 状态: 方向重定，场景待重建
+## TODO（速查）
+
+- [x] **P1** 重建 Main.unity 场景（GameManager / Robot / Ball / Camera / Ground / Canvas）
+- [x] **P2** 加 1 队友（蓝队）+ 1 对手（红队）GameObject，复用 CharacterBuilder 改色
+- [x] **P3** 剧本系统代码：Scenario / ScenarioPlayer / ScenarioTrigger / ScenarioFactory
+- [x] **P4** 生成 3 个剧本 .asset，挂到 ScenarioTrigger，监听 OnShotFired
+- [x] **P5** ScorePanel 评分 UI + 慢动作回放（Time.timeScale）
+- [ ] **P5.1** 球的发射起点跟随机器人当前位置（目前固定在场地原点，机器人巡逻时球会"飘"出来）
+- [ ] **P6** XR Origin 替换 Main Camera，PC 端先跑通 VR 视角
+- [ ] **P7** Quest 2 APK 构建 + 控制器输入（Trigger 选剧本）
+- [ ] **P8** 性能优化（Quest 2 帧率）
+- [ ] **P9** 演示视频拍摄 + 剪辑
+
+---
+
+> 版本: v4.1 | 日期: 2026-05-24 | 状态: PC 端 MVP 跑通，待优化 + VR 适配
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -36,10 +51,12 @@
 | 机器人 3D 渲染 | ✅ 完成 | 海绵宝宝程序化模型 + 炮台动画 |
 | 球轨迹反推 | ✅ 完成 | 抛物线计算 + LineRenderer |
 | 相机 / 拖尾 / UI | ✅ 完成 | 复用，无改动 |
-| **Main.unity 场景** | ❌ **丢失** | Hierarchy 只剩 Camera + Light，待重建 |
-| **虚拟队友 / 对手** | ❌ 未做 | 1 队友 + 1 对手，复用 CharacterBuilder 染色 |
-| **剧本系统** | ❌ 未做 | ScenarioPlayer + 3 个 ScriptableObject 剧本 |
-| **评分 UI** | ❌ 未做 | 剧本结束后弹分数 + 回放 |
+| **Main.unity 场景** | ✅ 重建完成 | GameManager / Robot / Teammate / Opponent / Ball / ScenarioPlayer / ScenarioTrigger / Camera / Ground / Canvas |
+| **虚拟队友 / 对手** | ✅ 完成 | CharacterBuilder 改色，蓝/红队 |
+| **剧本系统** | ✅ 完成 | Scenario SO + Player + Trigger + Editor 工厂菜单 |
+| **3 个剧本资产** | ✅ 完成 | ScoreSuccess / Intercepted / ShotMissed |
+| **评分 UI** | ✅ 完成 | ScorePanel 淡入淡出 + 按 outcome 着色 |
+| **球发射起点跟随机器人** | ⚠️ 已知问题 | 关键帧固定在场地原点，机器人巡逻时球会"飘"出来；待 ScenarioPlayer 加平移偏移 |
 | **Quest 2 部署** | ⬜ 待做 | XR Origin + APK Build + 控制器输入 |
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
@@ -203,19 +220,12 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1: 重建 [Main.unity](unity/Assets/Scenes/Main.unity)**
+**P1–P5 已完成**：场景重建好，剧本系统跑通，评分弹窗正常。
 
-上次 Hierarchy 丢了，恢复目录在 [unity/Assets/_Recovery/0.unity](unity/Assets/_Recovery/0.unity) 只剩 Camera + Light。重建步骤已经给过，关键是：
+**P5.1 已知问题**：球的发射起点固定在 `(0, 0.5, -1.5)`（[ScenarioFactory.cs](unity/Assets/Scripts/Scenario/Editor/ScenarioFactory.cs) 写死的初始关键帧），但 FakeDataGenerator 让机器人 8 字巡逻，所以球经常不从机器人身上飞出。
+**修法**：让 [ScenarioPlayer.cs](unity/Assets/Scripts/Scenario/ScenarioPlayer.cs) 在 `Play()` 时记录机器人当前 pose，把整套关键帧平移/旋转到以机器人为原点。改一个方法即可。
 
-1. 新建场景 → 保存为 `Assets/Scenes/Main.unity`
-2. **GameManager** GameObject → 挂 `GameManager` + `FakeDataGenerator`
-3. **Robot** GameObject → 挂 `RobotController` + `RobotVisuals` + `RobotPathTrail` + `CharacterBuilder`
-4. **Ball** Sphere → 挂 `BallController` + `TrajectoryRenderer`
-5. **Main Camera** → 挂 `SmoothFollow` + `CameraSwitcher`
-6. **Ground** Plane (Scale 2,1,2 = 20×20m，**之后改成 3×3m**)
-7. **Canvas** → UI Text-TMP × 4 → 挂 `StatusPanel`
-
-完成后 `Ctrl+S` 保存 + Build Profiles → Add Open Scene + git commit。
+**P6 接下来**：XR Origin 替换 Main Camera，PC 端先跑通 VR 视角，再上 Quest 2。
 
 ---
 

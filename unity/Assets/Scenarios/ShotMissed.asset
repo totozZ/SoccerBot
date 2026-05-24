@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3edcb15027a0ae8438e3440175b3ddf8, type: 3}
+  m_Name: ShotMissed
+  m_EditorClassIdentifier: Assembly-CSharp::SoccerBot.Scenario
+  scenarioName: "\u961F\u53CB\u5C04\u504F"
+  flavorText: "\u961F\u53CB\u63A5\u7403\u4F46\u5C04\u95E8\u504F\u51FA"
+  outcome: 2
+  finalScore: 50
+  duration: 5
+  ballPath:
+  - t: 0
+    position: {x: 0, y: 0.5, z: -1.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 0.6
+    position: {x: 0.4, y: 0.9, z: -0.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 1.2
+    position: {x: 0.8, y: 0.5, z: 0.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 2.5
+    position: {x: 0.8, y: 0.4, z: 0.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 3.4
+    position: {x: 1.4, y: 0.7, z: 1.6}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 4.2
+    position: {x: 2.5, y: 0.5, z: 2.4}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 5
+    position: {x: 3.2, y: 0.2, z: 2.8}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  teammatePath:
+  - t: 0
+    position: {x: 0.8, y: 0, z: 0.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 1.2
+    position: {x: 0.8, y: 0, z: 0.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 2.5
+    position: {x: 0.8, y: 0, z: 0.5}
+    eulerRotation: {x: 0, y: 60, z: 0}
+  - t: 3.4
+    position: {x: 1, y: 0, z: 0.8}
+    eulerRotation: {x: 0, y: 60, z: 0}
+  - t: 5
+    position: {x: 1.5, y: 0, z: 1.2}
+    eulerRotation: {x: 0, y: 60, z: 0}
+  opponentPath:
+  - t: 0
+    position: {x: -0.8, y: 0, z: 1}
+    eulerRotation: {x: 0, y: 180, z: 0}
+  - t: 2.5
+    position: {x: -0.4, y: 0, z: 1.2}
+    eulerRotation: {x: 0, y: 200, z: 0}
+  - t: 5
+    position: {x: 0.5, y: 0, z: 1.5}
+    eulerRotation: {x: 0, y: 220, z: 0}

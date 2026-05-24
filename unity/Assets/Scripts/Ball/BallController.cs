@@ -28,6 +28,7 @@ namespace SoccerBot
         private TrailRenderer _cometTrail;
         private TrajectoryRenderer _trajectoryRenderer;
         private bool _ballActive;
+        private bool _externalControl;
 
         void Awake()
         {
@@ -64,6 +65,7 @@ namespace SoccerBot
 
         void Update()
         {
+            if (_externalControl) return;
             if (GameManager.Instance == null) return;
 
             var ballData = GameManager.Instance.Ball;
@@ -91,6 +93,28 @@ namespace SoccerBot
             if (_trajectoryRenderer != null) _trajectoryRenderer.Clear();
         }
 
+        // ── External control (ScenarioPlayer) ───────────────
+        // While external control is active, Update() suppresses GameManager-driven
+        // pose updates. ScenarioPlayer drives _ballTransform directly.
+
+        public void BeginExternalControl()
+        {
+            _externalControl = true;
+            _ballActive = false;
+            SetBallVisible(true);
+            _cometTrail.Clear();
+            _cometTrail.emitting = true;
+            if (_trajectoryRenderer != null) _trajectoryRenderer.Clear();
+        }
+
+        public void EndExternalControl()
+        {
+            _externalControl = false;
+            _cometTrail.emitting = false;
+            HideBall();
+            _ballTransform.position = _idlePosition;
+        }
+
         private void SetBallVisible(bool visible)
         {
             var r = GetComponent<Renderer>();
@@ -100,6 +124,7 @@ namespace SoccerBot
         // Called by GameManager when isFiring rising edge (AFTER data is set).
         private void OnShotFired()
         {
+            if (_externalControl) return;
             SetBallVisible(true);
             _ballActive = true;
 

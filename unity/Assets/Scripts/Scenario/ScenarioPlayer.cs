@@ -1,0 +1,140 @@
+// ScenarioPlayer.cs — Plays a Scenario by linearly interpolating waypoints
+// for the ball, teammate, and opponent transforms. Slow-mo on the last second.
+//
+// Lifecycle:
+//   Play(scenario)
+//     → BallController.BeginExternalControl()  (suppresses GameManager-driven ball pose)
+//     → activate teammate/opponent renderers
+//     → coroutine drives transforms each frame using SampleAt()
+//     → last second: Time.timeScale = slowMoScale (uses unscaledDeltaTime internally)
+//     → restore timeScale, EndExternalControl(), fire OnScenarioComplete
+
+using System;
+using System.Collections;
+using UnityEngine;
+
+namespace SoccerBot
+{
+    public class ScenarioPlayer : MonoBehaviour
+    {
+        [Header("Scene References")]
+        [SerializeField] private Transform _ballTransform;
+        [SerializeField] private Transform _teammateTransform;
+        [SerializeField] private Transform _opponentTransform;
+        [SerializeField] private BallController _ballController;
+
+        [Header("Slow Motion")]
+        [SerializeField] private bool _slowMoLastSecond = true;
+        [SerializeField, Range(0.05f, 1f)] private float _slowMoScale = 0.35f;
+
+        public event Action<Scenario> OnScenarioComplete;
+
+        public bool IsPlaying { get; private set; }
+
+        public void Play(Scenario scenario)
+        {
+            if (scenario == null)
+            {
+                Debug.LogWarning("[ScenarioPlayer] Play called with null scenario.");
+                return;
+            }
+            if (IsPlaying)
+            {
+                Debug.LogWarning($"[ScenarioPlayer] Already playing; ignored '{scenario.scenarioName}'.");
+                return;
+            }
+            StartCoroutine(PlayCoroutine(scenario));
+        }
+
+        private IEnumerator PlayCoroutine(Scenario s)
+        {
+            IsPlaying = true;
+            Debug.Log($"[ScenarioPlayer] Playing: {s.scenarioName} ({s.outcome}, {s.finalScore})");
+
+            if (_ballController != null) _ballController.BeginExternalControl();
+            SetActive(_teammateTransform, true);
+            SetActive(_opponentTransform, true);
+
+            float elapsed = 0f;
+            float slowMoBoundary = Mathf.Max(0f, s.duration - 1f);
+            bool slowMoApplied = false;
+
+            // Snap to t=0 so there's no visible jump on first frame.
+            ApplySample(s, 0f);
+
+            while (elapsed < s.duration)
+            {
+                if (_slowMoLastSecond && !slowMoApplied && elapsed >= slowMoBoundary)
+                {
+                    Time.timeScale = _slowMoScale;
+                    slowMoApplied = true;
+                }
+
+                ApplySample(s, elapsed);
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            // Final frame at t = duration.
+            ApplySample(s, s.duration);
+
+            if (slowMoApplied) Time.timeScale = 1f;
+            if (_ballController != null) _ballController.EndExternalControl();
+
+            IsPlaying = false;
+            OnScenarioComplete?.Invoke(s);
+        }
+
+        private void ApplySample(Scenario s, float t)
+        {
+            if (_ballTransform != null)     SampleTo(_ballTransform,     s.ballPath,     t);
+            if (_teammateTransform != null) SampleTo(_teammateTransform, s.teammatePath, t);
+            if (_opponentTransform != null) SampleTo(_opponentTransform, s.opponentPath, t);
+        }
+
+        private static void SampleTo(Transform target, Waypoint[] path, float t)
+        {
+            if (path == null || path.Length == 0) return;
+
+            if (path.Length == 1 || t <= path[0].t)
+            {
+                target.position = path[0].position;
+                target.rotation = path[0].Rotation;
+                return;
+            }
+
+            var last = path[path.Length - 1];
+            if (t >= last.t)
+            {
+                target.position = last.position;
+                target.rotation = last.Rotation;
+                return;
+            }
+
+            for (int i = 0; i < path.Length - 1; i++)
+            {
+                var a = path[i];
+                var b = path[i + 1];
+                if (t >= a.t && t <= b.t)
+                {
+                    float span = Mathf.Max(0.0001f, b.t - a.t);
+                    float u = (t - a.t) / span;
+                    target.position = Vector3.Lerp(a.position, b.position, u);
+                    target.rotation = Quaternion.Slerp(a.Rotation, b.Rotation, u);
+                    return;
+                }
+            }
+        }
+
+        private static void SetActive(Transform t, bool active)
+        {
+            if (t != null) t.gameObject.SetActive(active);
+        }
+
+        void OnDisable()
+        {
+            // Safety: never leave timeScale modified if disabled mid-playback.
+            if (IsPlaying) Time.timeScale = 1f;
+        }
+    }
+}
