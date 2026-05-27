@@ -21,6 +21,7 @@ namespace SoccerBot
         [SerializeField] private Transform _ballTransform;
         [SerializeField] private Transform _teammateTransform;
         [SerializeField] private Transform _opponentTransform;
+        [SerializeField] private Transform _robotTransform;      // P5.1: for ball-origin offset
         [SerializeField] private BallController _ballController;
 
         [Header("Slow Motion")]
@@ -55,12 +56,30 @@ namespace SoccerBot
             SetActive(_teammateTransform, true);
             SetActive(_opponentTransform, true);
 
+            // P5.1: Offset all waypoints so the ball originates from the robot's
+            // current world position instead of the design-time (0, 0.5, -1.5).
+            Vector3 posOffset = Vector3.zero;
+            Quaternion rotOffset = Quaternion.identity;
+            Vector3 designOrigin = Vector3.zero;
+            if (_robotTransform != null && s.ballPath != null && s.ballPath.Length > 0)
+            {
+                designOrigin = s.ballPath[0].position;
+                posOffset = _robotTransform.position - designOrigin;
+                rotOffset = Quaternion.Euler(0f, _robotTransform.eulerAngles.y, 0f);
+            }
+
+            // Ball gets the full offset. Teammate/Opponent keep their original Y
+            // so they stay on the ground instead of sinking when designOrigin.y != 0.
+            var ballPath     = OffsetPath(s.ballPath,     posOffset, rotOffset, designOrigin, false);
+            var teammatePath = OffsetPath(s.teammatePath, posOffset, rotOffset, designOrigin, true);
+            var opponentPath = OffsetPath(s.opponentPath, posOffset, rotOffset, designOrigin, true);
+
             float elapsed = 0f;
             float slowMoBoundary = Mathf.Max(0f, s.duration - 1f);
             bool slowMoApplied = false;
 
             // Snap to t=0 so there's no visible jump on first frame.
-            ApplySample(s, 0f);
+            ApplySample(ballPath, teammatePath, opponentPath, 0f);
 
             while (elapsed < s.duration)
             {
@@ -70,13 +89,13 @@ namespace SoccerBot
                     slowMoApplied = true;
                 }
 
-                ApplySample(s, elapsed);
+                ApplySample(ballPath, teammatePath, opponentPath, elapsed);
                 yield return null;
                 elapsed += Time.deltaTime;
             }
 
             // Final frame at t = duration.
-            ApplySample(s, s.duration);
+            ApplySample(ballPath, teammatePath, opponentPath, s.duration);
 
             if (slowMoApplied) Time.timeScale = 1f;
             if (_ballController != null) _ballController.EndExternalControl();
@@ -85,11 +104,30 @@ namespace SoccerBot
             OnScenarioComplete?.Invoke(s);
         }
 
-        private void ApplySample(Scenario s, float t)
+        // P5.1: overload accepting pre-offset local path copies.
+        private void ApplySample(Waypoint[] ballPath, Waypoint[] teammatePath, Waypoint[] opponentPath, float t)
         {
-            if (_ballTransform != null)     SampleTo(_ballTransform,     s.ballPath,     t);
-            if (_teammateTransform != null) SampleTo(_teammateTransform, s.teammatePath, t);
-            if (_opponentTransform != null) SampleTo(_opponentTransform, s.opponentPath, t);
+            if (_ballTransform != null)     SampleTo(_ballTransform,     ballPath,     t);
+            if (_teammateTransform != null) SampleTo(_teammateTransform, teammatePath, t);
+            if (_opponentTransform != null) SampleTo(_opponentTransform, opponentPath, t);
+        }
+
+        // P5.1: translate + yaw-rotate a waypoint array around the design origin.
+        // When keepY is true, the original Y is preserved (for ground-bound NPCs).
+        private static Waypoint[] OffsetPath(Waypoint[] path, Vector3 offset, Quaternion rotation, Vector3 designOrigin, bool keepY)
+        {
+            if (path == null) return null;
+            var result = new Waypoint[path.Length];
+            for (int i = 0; i < path.Length; i++)
+            {
+                result[i] = path[i];
+                var local = path[i].position - designOrigin;
+                var newPos = rotation * local + designOrigin + offset;
+                if (keepY) newPos.y = path[i].position.y;
+                result[i].position = newPos;
+                result[i].eulerRotation = (rotation * Quaternion.Euler(path[i].eulerRotation)).eulerAngles;
+            }
+            return result;
         }
 
         private static void SampleTo(Transform target, Waypoint[] path, float t)

@@ -2,7 +2,7 @@
 
 > **互联网+ 大学生创新创业大赛 · 萌芽赛道** 参赛项目
 >
-> 真机器人触发 + 虚拟世界推演 + Meta Quest 2 沉浸观看的 AR 训练沙盒。
+> 真机器人触发 + 虚拟世界推演 + Meta Quest 3S 沉浸观看的 AR 训练沙盒。
 
 ---
 
@@ -10,7 +10,7 @@
 
 **痛点**：FRC 风格的足球机器人训练缺真实对手、缺安全场地、缺低成本练习方式。
 
-**方案**：用一台真机器人作为"输入设备"，发射动作触发 Unity 内的虚拟球，虚拟队友 / 对手按预设战术剧本演绎传球走向，最后给一个评分。整个过程在 Meta Quest 2 里沉浸式观看。
+**方案**：用一台真机器人作为"输入设备"，发射动作触发 Unity 内的虚拟球，虚拟队友 / 对手按预设战术剧本演绎传球走向，最后给一个评分。整个过程在 Meta Quest 3S 里沉浸式观看。
 
 **一句话**：硬件按一下，虚拟世界跑完一整场配合。
 
@@ -22,7 +22,7 @@
 |------|------|
 | **真海绵宝宝机器人** | 旁边桌上能动就行，发射键触发 NT 信号 |
 | **Unity 推演端** | 接收发射信号 → 生成虚拟球 → 选剧本 → 播放 → 评分 |
-| **Meta Quest 2** | 部署同一份 Unity APK，沉浸式观看推演过程 |
+| **Meta Quest 3S** | 通过 MQDH sideload APK，沉浸式观看推演过程 |
 
 ---
 
@@ -36,7 +36,7 @@ NetworkTables: is_firing = true
       │
       ▼
 ┌──────────────────────────────────┐
-│  Unity (PC + Quest 2 双端)         │
+│  Unity (PC + Quest 3S 双端)         │
 │                                  │
 │  GameManager.OnShotFired         │
 │      │                           │
@@ -63,7 +63,7 @@ NetworkTables: is_firing = true
 - **AI 剧本推演**：3 个预设剧本（成功传球 / 被拦截 / 射偏），按钮或随机选
 - **虚拟队友 / 对手**：1v1 最小冲突阵型，复用海绵宝宝染色
 - **评分系统**：剧本结束弹分数 + 慢动作回放
-- **VR 沉浸观看**：Meta Quest 2 部署，全程第一人称
+- **VR 沉浸观看**：Meta Quest 3S 部署，全程第一人称
 - **独立调试**：FakeDataGenerator 让 Unity 端无机器人也能跑
 
 ---
@@ -75,8 +75,8 @@ NetworkTables: is_firing = true
 | 机器人控制 | WPILib / C++ | 2026 |
 | 通信 | NetworkTables v4（本期 FakeData 顶） | — |
 | 3D 引擎 | Unity + URP | 6000.4.7f1 |
-| VR | XR Interaction Toolkit + Oculus | 3.4.1 / 4.5.4 |
-| 脚本 | C# | — |
+| VR | XR Interaction Toolkit + Oculus (Meta Quest 3S) | 3.4.1 / 4.5.4 |
+| 部署 | Meta Quest Developer Hub (MQDH) sideload | — |
 
 ---
 
@@ -84,7 +84,7 @@ NetworkTables: is_firing = true
 
 ### 环境
 - Unity 6000.4.7f1 + URP
-- Meta Quest 2（VR 部署阶段）
+- Meta Quest 3S（VR 部署阶段）
 
 ### 独立运行（无机器人）
 打开 `Assets/Scenes/Main.unity`（重建后）→ Play。
@@ -113,8 +113,8 @@ SoccerBot/
             ├── Simulation/                # ✅ FakeData 调试源
             ├── UI/                        # ✅ 状态面板
             ├── Camera/                    # ✅ 跟随相机
-            ├── Scenario/                  # ❌ 剧本系统（待写）
-            └── XR/                        # ❌ VR 适配（待写）
+            ├── Scenario/                  # ✅ 剧本系统
+            └── XR/                        # ✅ VR 适配（XR Origin + PC 自由视角）
 ```
 
 ---
@@ -123,7 +123,7 @@ SoccerBot/
 
 详见 [PLAN.md](PLAN.md)。
 
-**当前状态（2026-05-24）**：v4.1 — PC 端 MVP 跑通。场景重建完成，剧本系统 + 评分 UI 工作正常。已知小 bug：球的发射起点未跟随机器人当前位置（待 P5.1 修复）。下一步进 P6：XR Origin 适配。
+**当前状态（2026-05-27）**：v5.0 — P1–P6 完成：XR Origin + PCCameraController PC 自由视角 + 剧本 + 评分全跑通。P7 APK 构建代码就绪，Android 环境待网络安装。MQDH sideload 待 APK。
 
 ---
 

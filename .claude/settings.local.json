@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"c:/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/.claude\" 2>/dev/null; ls \"C:/Users/95833/.claude/skills\" 2>/dev/null | head -20)",
+      "Read(//c/Users/95833/.claude/**)",
+      "Bash(ls \"c:/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Editor\" 2>/dev/null; mkdir -p \"c:/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/.claude/skills/quest-build\" \"c:/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/.claude/skills/plan-sync\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"
+    ]
+  }
+}

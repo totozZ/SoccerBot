@@ -7,22 +7,22 @@
 - [x] **P3** 剧本系统代码：Scenario / ScenarioPlayer / ScenarioTrigger / ScenarioFactory
 - [x] **P4** 生成 3 个剧本 .asset，挂到 ScenarioTrigger，监听 OnShotFired
 - [x] **P5** ScorePanel 评分 UI + 慢动作回放（Time.timeScale）
-- [ ] **P5.1** 球的发射起点跟随机器人当前位置（目前固定在场地原点，机器人巡逻时球会"飘"出来）
-- [ ] **P6** XR Origin 替换 Main Camera，PC 端先跑通 VR 视角
-- [ ] **P7** Quest 2 APK 构建 + 控制器输入（Trigger 选剧本）
-- [ ] **P8** 性能优化（Quest 2 帧率）
+- [x] **P5.1** 球的发射起点跟随机器人当前位置
+- [x] **P6** XR Origin + PCCameraController 自由视角（PC 端右键拖拽 + WASD 浏览）
+- [ ] **P7** Quest 3S APK 构建 + 手柄 Trigger 选剧本（代码已写，待 Android 环境）
+- [ ] **P8** 性能优化（Quest 帧率）
 - [ ] **P9** 演示视频拍摄 + 剪辑
 
 ---
 
-> 版本: v4.1 | 日期: 2026-05-24 | 状态: PC 端 MVP 跑通，待优化 + VR 适配
+> 版本: v5.0 | 日期: 2026-05-27 | 状态: PC 端完整跑通（XR Origin + PC 自由视角 + 剧本 + 评分），APK 构建 + VR 推送待网络
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
 
 ## 一句话项目定位
 
-真机器人发射 → Unity 接管为虚拟球 → AI 队友/对手按预设剧本推演传球走向 → 评分 → 全程 Meta Quest 2 沉浸观看。
+真机器人发射 → Unity 接管为虚拟球 → AI 队友/对手按预设剧本推演传球走向 → 评分 → 全程 Meta Quest 3S 沉浸观看。
 
 不是 AdvantageScope 增强版（v3.0 的旧定位已废弃）。是 **VR AR 训练沙盒**：用真硬件触发，用虚拟世界推演。
 
@@ -32,7 +32,7 @@
 
 | 时间 | 镜头 | 解说 |
 |------|------|------|
-| 0:00–0:15 | 真机器人 + 戴 Quest 2 的人 | 痛点：足球机器人训练缺对手、缺场地、缺安全空间 |
+| 0:00–0:15 | 真机器人 + 戴 Quest 3S 的人 | 痛点：足球机器人训练缺对手、缺场地、缺安全空间 |
 | 0:15–0:45 | 真机器人发射 → Unity/VR 同步出现虚拟球飞出 | 虚实结合：真硬件触发 + 虚拟推演 |
 | 0:45–1:45 | 虚拟队友接球 → 三个剧本之一播放（射门成功 / 被拦截 / 射偏） | AI 推演比赛走向 |
 | 1:45–2:15 | 评分浮窗 + 慢动作回放 | 量化训练结果 |
@@ -56,8 +56,9 @@
 | **剧本系统** | ✅ 完成 | Scenario SO + Player + Trigger + Editor 工厂菜单 |
 | **3 个剧本资产** | ✅ 完成 | ScoreSuccess / Intercepted / ShotMissed |
 | **评分 UI** | ✅ 完成 | ScorePanel 淡入淡出 + 按 outcome 着色 |
-| **球发射起点跟随机器人** | ⚠️ 已知问题 | 关键帧固定在场地原点，机器人巡逻时球会"飘"出来；待 ScenarioPlayer 加平移偏移 |
-| **Quest 2 部署** | ⬜ 待做 | XR Origin + APK Build + 控制器输入 |
+| **球发射起点跟随机器人** | ✅ 完成 | ScenarioPlayer 偏移关键帧至机器人当前位置 |
+| **XR Origin + 自由视角** | ✅ 完成 | Editor 菜单一键生成 XR Origin + PCCameraController（右键拖拽 + WASD） |
+| **Quest 3S 部署** | ⚠️ 代码就绪 | BuildAndroid.cs + 手柄 Trigger 输入已写；Android 环境待网络安装 |
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
 ---
@@ -71,7 +72,7 @@
 | **虚拟球员** | 1 队友（蓝队）+ 1 对手（红队）。复用 [CharacterBuilder](unity/Assets/Scripts/Robot/CharacterBuilder.cs) 改颜色 |
 | **AI 推演** | 3 个**预设剧本**切换：①成功传球得分 ②被对手拦截 ③队友射偏。按按钮选/随机播。不做状态机/RL |
 | **球场** | 3×3m 室内最小尺寸，胶带框出来即可 |
-| **Quest 2** | **必做**（项目题目就是 VR 方向）。XR Origin 替换主相机，APK 部署 |
+| **Quest 3S** | **必做**（项目题目就是 VR 方向）。XR Origin 替换主相机，APK 部署 |
 | **NT SDK** | 本期不集成，FakeDataGenerator 占位。真机联调列入展望 |
 
 > 方向锁定原因详见 [memory/project_competition_context.md](memory/project_competition_context.md)。萌芽赛道评审看的是"概念新颖 + 演示视频"，不是产品成熟度。
@@ -108,7 +109,7 @@
          │    │
          ▼    ▼
    ┌─────────────┐
-   │ Meta Quest 2│  ← 同一份 Unity build 部署 APK
+   │ Meta Quest 3S│  ← 同一份 Unity build 部署 APK
    │ 沉浸式观看   │
    └─────────────┘
 ```
@@ -125,8 +126,8 @@
 | **P4** | 虚拟球生成 + 监听 OnShotFired → 触发剧本播放 | 0.5 天 |
 | **P5** | 评分 UI + 慢动作回放（Time.timeScale = 0.3） | 1 天 |
 | **P6** | XR Origin 替换 Main Camera，PC 端先跑通 VR 视角 | 1 天 |
-| **P7** | Quest 2 APK 构建 + 控制器输入（按 Trigger 选剧本） | 1 天 |
-| **P8** | 性能优化（海绵宝宝 primitive 多，Quest 2 容易掉帧） | 1–2 天 |
+| **P7** | Quest 3S APK 构建 + 控制器输入（按 Trigger 选剧本） | 1 天 |
+| **P8** | 性能优化（海绵宝宝 primitive 多，Quest 容易掉帧） | 1–2 天 |
 | **P9** | 演示视频拍摄 + 剪辑 | 1 天 |
 | **总计** | | **~9–10 天** |
 
@@ -220,12 +221,16 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1–P5 已完成**：场景重建好，剧本系统跑通，评分弹窗正常。
+**P1–P6 已完成**：场景 + 剧本 + 评分 + PC 自由视角全跑通。
 
-**P5.1 已知问题**：球的发射起点固定在 `(0, 0.5, -1.5)`（[ScenarioFactory.cs](unity/Assets/Scripts/Scenario/Editor/ScenarioFactory.cs) 写死的初始关键帧），但 FakeDataGenerator 让机器人 8 字巡逻，所以球经常不从机器人身上飞出。
-**修法**：让 [ScenarioPlayer.cs](unity/Assets/Scripts/Scenario/ScenarioPlayer.cs) 在 `Play()` 时记录机器人当前 pose，把整套关键帧平移/旋转到以机器人为原点。改一个方法即可。
+**P7 阻塞**：Android SDK 因网络问题未安装，APK 无法构建。手柄 Trigger 输入代码已就绪（ScenarioTrigger 支持键盘 1/2/3/Space + Quest 手柄 Trigger/A/X/B）。
 
-**P6 接下来**：XR Origin 替换 Main Camera，PC 端先跑通 VR 视角，再上 Quest 2。
+**VR Link 测试阻塞**：Quest 3S 需 PC 端 Oculus Runtime（Meta Quest Link 应用），未安装时 Unity 无法推送画面到头显。
+
+**下一步可选**：
+- 等网络 → 装 Android SDK → Build APK → MQDH sideload 到 Quest 3S
+- 先做 P8（Quest 帧率优化，PC 上即可调试）
+- 先做 P9（演示视频，PC 录屏即可，不必须头显）
 
 ---
 
@@ -238,4 +243,4 @@ SoccerBot/
 - **NT 双向通信**：Unity 把虚拟队友/对手位置回传机器人，机器人自动瞄准
 - **真 AI 决策**：状态机 → 强化学习，替代预设剧本
 - **4v4 完整阵型**：扩展到真实比赛规模
-- **多人协作**：多台 Quest 2 + 多机器人同场训练
+- **多人协作**：多台 Quest 3S + 多机器人同场训练
