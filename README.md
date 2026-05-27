@@ -105,15 +105,17 @@ SoccerBot/
 ├── robot/                                 # 机器人端（本期可空）
 └── unity/                                 # Unity 推演端（主战场）
     └── Assets/
-        ├── Scenes/Main.unity              # ❌ 待重建
+        ├── Scenes/Main.unity              # ✅ 已重建 + 视觉打磨
         └── Scripts/
             ├── Core/                      # ✅ 数据中枢、NT 骨架
             ├── Robot/                     # ✅ 海绵宝宝机器人
             ├── Ball/                      # ✅ 虚拟球 + 轨迹
             ├── Simulation/                # ✅ FakeData 调试源
-            ├── UI/                        # ✅ 状态面板
-            ├── Camera/                    # ✅ 跟随相机
+            ├── UI/                        # ✅ 状态面板 + ScoreBoard 比分牌
+            ├── Camera/                    # ✅ 跟随 + 自由视角 + 1/2/3 直切
             ├── Scenario/                  # ✅ 剧本系统
+            ├── Field/                     # ✅ 程序化足球场（菜单 SoccerBot/Build Field）
+            ├── Effects/                   # ✅ OutcomeFx 粒子 + PolishVolumeBuilder 后处理
             └── XR/                        # ✅ VR 适配（XR Origin + PC 自由视角）
 ```
 
@@ -123,7 +125,7 @@ SoccerBot/
 
 详见 [PLAN.md](PLAN.md)。
 
-**当前状态（2026-05-27）**：v5.0 — P1–P6 完成：XR Origin + PCCameraController PC 自由视角 + 剧本 + 评分全跑通。P7 APK 构建代码就绪，Android 环境待网络安装。MQDH sideload 待 APK。
+**当前状态（2026-05-27）**：v6.1 — P1–P6.5 完成：剧本 + 评分 + PC 自由视角 + 视觉打磨（程序化球场 / URP 后处理 / Outcome 粒子 / 4 角 SpotLight / 3 静态机位 1/2/3 直切 / HUD 减负 + 顶部比分牌）全跑通。P7 演示流程开发中。P8 APK 构建代码就绪，Android 环境待网络安装。
 
 ---
 

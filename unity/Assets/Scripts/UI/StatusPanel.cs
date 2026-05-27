@@ -16,10 +16,16 @@ namespace SoccerBot
 
         [Header("Settings")]
         [SerializeField] private float _updateInterval = 0.15f;
+        [Tooltip("When false, the entire panel is hidden — keep off for demo recordings.")]
+        [SerializeField] private bool _showInDemo = false;
 
         private float _timer;
 
-        void Start() => UpdateUI();
+        void Start()
+        {
+            if (!_showInDemo) gameObject.SetActive(false);
+            UpdateUI();
+        }
 
         void Update()
         {

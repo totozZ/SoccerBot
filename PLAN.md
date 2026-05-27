@@ -9,13 +9,19 @@
 - [x] **P5** ScorePanel 评分 UI + 慢动作回放（Time.timeScale）
 - [x] **P5.1** 球的发射起点跟随机器人当前位置
 - [x] **P6** XR Origin + PCCameraController 自由视角（PC 端右键拖拽 + WASD 浏览）
-- [ ] **P7** Quest 3S APK 构建 + 手柄 Trigger 选剧本（代码已写，待 Android 环境）
-- [ ] **P8** 性能优化（Quest 帧率）
-- [ ] **P9** 演示视频拍摄 + 剪辑
+- [x] **P6.5** 视觉打磨：程序化足球场 / URP 后处理 Volume / Outcome 粒子特效 / 4 角 SpotLight / 3 静态机位（数字键 1/2/3）/ HUD 减负 + 顶部比分牌
+- [ ] **P7** 演示流程状态机 FlowManager（串联启动→比赛→操作→演算→评分全流程）
+- [ ] **P7.1** IntroManager 启动画面（黑底白字 + 比赛背景简介 + BGM 淡入）
+- [ ] **P7.2** VRShootController 体感射门（手柄速度/方向追踪 → 射门/传球判定）
+- [ ] **P7.3** ReplayDirector 演算导演（根据玩家操作选分支剧本 + 慢动作回放）
+- [ ] **P7.4** AudioManager BGM 管理（背景音乐 + 音效事件触发）
+- [ ] **P8** Quest 3S APK 构建 + 手柄输入适配（代码已写，待 Android 环境）
+- [ ] **P9** 性能优化（Quest 帧率 / Draw Call / 脚本热点）
+- [ ] **P10** 演示视频拍摄 + 剪辑
 
 ---
 
-> 版本: v5.0 | 日期: 2026-05-27 | 状态: PC 端完整跑通（XR Origin + PC 自由视角 + 剧本 + 评分），APK 构建 + VR 推送待网络
+> 版本: v6.1 | 日期: 2026-05-27 | 状态: P1–P6.5 完成。视觉打磨落地（球场 / 后处理 / 特效 / 灯光 / 多机位 / HUD），P7 演示流程设计已明确，开发中
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -28,19 +34,62 @@
 
 ---
 
-## 演示故事板（3 分钟视频）
+## 演示流程（第一视角沉浸体验）
 
-| 时间 | 镜头 | 解说 |
-|------|------|------|
-| 0:00–0:15 | 真机器人 + 戴 Quest 3S 的人 | 痛点：足球机器人训练缺对手、缺场地、缺安全空间 |
-| 0:15–0:45 | 真机器人发射 → Unity/VR 同步出现虚拟球飞出 | 虚实结合：真硬件触发 + 虚拟推演 |
-| 0:45–1:45 | 虚拟队友接球 → 三个剧本之一播放（射门成功 / 被拦截 / 射偏） | AI 推演比赛走向 |
-| 1:45–2:15 | 评分浮窗 + 慢动作回放 | 量化训练结果 |
-| 2:15–2:45 | PPT 渲染：4v4 完整阵型、真球传感器、UWB 定位 | 未来展望 |
+```
+┌─────────────────────────────────────────────┐
+│ ① 启动画面 (Intro)                           │
+│ 黑底白字：比赛背景简介（经典比赛重现）          │
+│ + BGM 淡入                                   │
+│ 例：「2014 世界杯决赛，加时赛第 113 分钟…」     │
+└──────────────────┬──────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────┐
+│ ② 比赛关键节点切入                            │
+│ 画面从黑屏过渡亮起，球员已在场上               │
+│ 相机切换到第一人称视角                        │
+│ 对手正在进攻 / 队友持球准备传给你              │
+└──────────────────┬──────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────┐
+│ ③ 真实机器人发球                              │
+│ 海绵宝宝发射键按下 → Unity 生成虚拟球飞向你    │
+│ （叙事层：队友传球给你的瞬间）                 │
+└──────────────────┬──────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────┐
+│ ④ 玩家 VR 体感操作 ★核心交互                  │
+│ Quest 手柄追踪手臂动作                        │
+│ → 挥臂击球 / 推杆传球                        │
+│ 出球方向/力度由手柄速度&方向决定              │
+└──────────────────┬──────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────┐
+│ ⑤ 演算画面 (Replay)                          │
+│ 根据玩家操作结果 + 预设剧本分支：             │
+│ 进球 → 欢呼 + 庆祝动画                       │
+│ 被拦截 → 对手抢断特写                        │
+│ 射偏 → 遗憾慢镜                             │
+└──────────────────┬──────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────┐
+│ ⑥ 评分 + 建议 (ScorePanel)                   │
+│ 得分 / 评级 / 改进建议（基于射门质量）         │
+│ + BGM 淡出 + 返回主菜单                       │
+└─────────────────────────────────────────────┘
+```
+
+### 剧本背景示例
+
+| # | 场景 | 简介文案 | BGM 情绪 |
+|---|------|----------|----------|
+| 1 | 2014 世界杯决赛 | 格策替补绝杀，德国 1-0 阿根廷 | 史诗激昂 |
+| 2 | 2022 世界杯决赛 | 姆巴佩帽子戏法，法国绝境反击 | 紧张压迫 |
+| 3 | 经典德比 | 巴萨 vs 皇马，梅西一条龙 | 激情澎湃 |
 
 ---
 
-## 当前进度总览（v4.0）
+## 当前进度总览（v6.1）
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
@@ -51,14 +100,17 @@
 | 机器人 3D 渲染 | ✅ 完成 | 海绵宝宝程序化模型 + 炮台动画 |
 | 球轨迹反推 | ✅ 完成 | 抛物线计算 + LineRenderer |
 | 相机 / 拖尾 / UI | ✅ 完成 | 复用，无改动 |
-| **Main.unity 场景** | ✅ 重建完成 | GameManager / Robot / Teammate / Opponent / Ball / ScenarioPlayer / ScenarioTrigger / Camera / Ground / Canvas |
+| **Main.unity 场景** | ✅ 重建完成 | GameManager / Robot / Teammate / Opponent / Ball / ScenarioPlayer / ScenarioTrigger / PC Camera / XR Origin / Ground / HUD |
+| **场景优化** | ✅ 完成 | 相机重命名（PC Camera / XR Camera）、AudioListener 去重、拼写修正、Ground Static Batching |
 | **虚拟队友 / 对手** | ✅ 完成 | CharacterBuilder 改色，蓝/红队 |
 | **剧本系统** | ✅ 完成 | Scenario SO + Player + Trigger + Editor 工厂菜单 |
 | **3 个剧本资产** | ✅ 完成 | ScoreSuccess / Intercepted / ShotMissed |
 | **评分 UI** | ✅ 完成 | ScorePanel 淡入淡出 + 按 outcome 着色 |
 | **球发射起点跟随机器人** | ✅ 完成 | ScenarioPlayer 偏移关键帧至机器人当前位置 |
-| **XR Origin + 自由视角** | ✅ 完成 | Editor 菜单一键生成 XR Origin + PCCameraController（右键拖拽 + WASD） |
-| **Quest 3S 部署** | ⚠️ 代码就绪 | BuildAndroid.cs + 手柄 Trigger 输入已写；Android 环境待网络安装 |
+| **XR Origin + PC 自由视角** | ✅ 完成 | PCCameraController（右键拖拽 + WASD） |
+| **P6.5 视觉打磨** | ✅ 完成 | FieldBuilder 程序化球场（绿地/条纹/边线/中圈/双球门）+ PolishVolumeBuilder（Bloom/Vignette/ColorAdj/ACES）+ OutcomeFx（金/红/灰三种粒子）+ 4 角 SpotLight + 3 静态机位（OverheadCam/SideCam/BehindRobotCam，1/2/3 数字键直切）+ HUD `_showInDemo` 开关 + ScoreBoard 顶部比分牌 |
+| **演示流程** | 🔲 P7 开发中 | FlowManager 状态机 + Intro 启动画面 + VR 体感射门 + 演算导演 + BGM |
+| **Quest 3S 部署** | ⚠️ 代码就绪 | BuildAndroid.cs + 手柄 Trigge 输入已写；Android 环境待网络安装 |
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
 ---
@@ -120,16 +172,17 @@
 
 | Phase | 内容 | 工期估计 |
 |-------|------|---------|
-| **P1** | 重建 [Main.unity](unity/Assets/Scenes/Main.unity)，按上次给的 7 步在 Editor 里点出来 | 0.5 天 |
+| **P1** | 重建 [Main.unity](unity/Assets/Scenes/Main.unity) | 0.5 天 |
 | **P2** | 加 1 队友 + 1 对手 GameObject（CharacterBuilder 改色版） | 0.5 天 |
-| **P3** | **剧本系统核心**：`ScenarioPlayer.cs` + `Scenario` ScriptableObject + 3 个剧本资产 | 2 天 |
+| **P3** | **剧本系统核心**：Scenario / ScenarioPlayer / ScenarioTrigger + 3 个剧本资产 | 2 天 |
 | **P4** | 虚拟球生成 + 监听 OnShotFired → 触发剧本播放 | 0.5 天 |
 | **P5** | 评分 UI + 慢动作回放（Time.timeScale = 0.3） | 1 天 |
-| **P6** | XR Origin 替换 Main Camera，PC 端先跑通 VR 视角 | 1 天 |
-| **P7** | Quest 3S APK 构建 + 控制器输入（按 Trigger 选剧本） | 1 天 |
-| **P8** | 性能优化（海绵宝宝 primitive 多，Quest 容易掉帧） | 1–2 天 |
-| **P9** | 演示视频拍摄 + 剪辑 | 1 天 |
-| **总计** | | **~9–10 天** |
+| **P6** | XR Origin + PCCameraController PC 自由视角 | 1 天 |
+| **P7** | **演示流程**：FlowManager + IntroManager + VRShootController + ReplayDirector + AudioManager | 3–4 天 |
+| **P8** | Quest 3S APK 构建 + 手柄输入适配 | 1 天 |
+| **P9** | 性能优化（Quest 帧率 / Draw Call / 脚本热点） | 1–2 天 |
+| **P10** | 演示视频拍摄 + 剪辑 | 1 天 |
+| **总计** | | **~12–14 天** |
 
 ---
 
@@ -171,20 +224,114 @@ public struct Keyframe
 
 ---
 
-## 文件结构（v4.0）
+## 演示流程状态机设计（P7）
+
+### FlowManager — 流程状态机
+
+整个演示由 `FlowManager` 驱动的有限状态机串联：
+
+```
+States:
+  Intro → KickOff → Playing → Shooting → Replay → Scoring → End
+
+Transitions:
+  Intro ──(introDone)──▶ KickOff
+  KickOff ──(ballFired)──▶ Playing
+  Playing ──(swingDetected)──▶ Shooting
+  Shooting ──(ballHit)──▶ Replay
+  Replay ──(replayDone)──▶ Scoring
+  Scoring ──(dismiss)──▶ End
+```
+
+```csharp
+// FlowManager.cs (待写)
+public enum DemoState { Intro, KickOff, Playing, Shooting, Replay, Scoring, End }
+
+public class FlowManager : MonoBehaviour
+{
+    public DemoState CurrentState;
+    public event Action<DemoState> OnStateChanged;
+    
+    // 每个状态对应一个 IPhaseController 组件
+    public void TransitionTo(DemoState next);
+}
+```
+
+### P7.1 IntroManager — 启动画面
+
+| 功能 | 说明 |
+|------|------|
+| 黑底 Canvas | 全屏黑色背景 + 居中白色文字 |
+| 文案显示 | 逐行淡入：比赛名称 → 时间节点 → 关键球员 |
+| BGM | AudioManager 协同，淡入播放 |
+| 过渡 | 3-4 秒后文字淡出 → 相机黑屏 → 亮起切入比赛视角 |
+| 跳过 | 任意按键跳过 intro |
+
+### P7.2 VRShootController — 体感射门 ★核心
+
+| 功能 | 说明 |
+|------|------|
+| 输入源 | Quest 右手柄位置 + 速度（`XR Controller.velocity`） |
+| 触发判定 | 手柄速度 > 阈值 → 判定为挥臂射门 |
+| 方向计算 | 手柄瞬时速度方向 = 出球方向 |
+| 力度计算 | 速度大小映射到球初速（clamp 合理范围） |
+| 传球 | 左手柄触发（或按键 B/Y）→ 传给队友方向 |
+| PC 模拟 | 鼠标左键按住拖拽 → 松开 = 射门（方向 = 拖拽向量） |
+| 反馈 | 击中瞬间手柄振动 + 音效 |
+
+```csharp
+// VRShootController.cs (待写)
+public class VRShootController : MonoBehaviour
+{
+    public float swingThreshold = 3.0f;     // 最小挥臂速度 m/s
+    public float maxShotSpeed = 25.0f;      // 最大出球速度
+    
+    public event Action<Vector3, float> OnShot;  // 方向, 速度
+    
+    void Update()
+    {
+        // 1. 从 XR Controller 读速度
+        // 2. 速度 > 阈值 → 触发 OnShot
+        // 3. 短暂禁用防止连发
+    }
+}
+```
+
+### P7.3 ReplayDirector — 演算导演
+
+| 功能 | 说明 |
+|------|------|
+| 输入 | 玩家射门结果（方向 + 力度 + 命中目标？） |
+| 分支 | 进球 → ScoreSuccess / 被拦截 → Intercepted / 射偏 → ShotMissed |
+| 播放 | 调用现有 ScenarioPlayer 播放选中的剧本 |
+| 慢动作 | Time.timeScale = 0.3，关键帧慢放 |
+| 相机 | 自动切换到最佳观看角度（侧面/俯视） |
+
+### P7.4 AudioManager — 音频管理
+
+| 功能 | 说明 |
+|------|------|
+| BGM | 根据 DemoState 切换背景音乐 |
+| 音效 | 射门、进球、拦截、UI 点击等事件音效 |
+| 淡入淡出 | 状态切换时平滑过渡 |
+| 音量 | 可配置的主音量 / BGM 音量 / SFX 音量 |
+
+---
+
+## 文件结构（v6.0）
 
 ```
 SoccerBot/
-├── README.md                              # 项目说明（v4.0）
+├── README.md                              # 项目说明
 ├── PLAN.md                                # 本文件
 ├── .gitignore
 ├── robot/                                 # ⬇️ 优先级降低，本期可空
 └── unity/
     ├── Assets/
     │   ├── Scenes/
-    │   │   └── Main.unity                 # ❌ 待重建
+    │   │   └── Main.unity                 # ✅ 已重建 + 优化
     │   └── Scripts/
-    │       ├── Core/                      # ✅ 已完成（保持不动）
+    │       ├── Core/                      # ✅ 已完成
     │       │   ├── RobotData.cs
     │       │   ├── IDataSource.cs
     │       │   ├── GameManager.cs
@@ -198,19 +345,33 @@ SoccerBot/
     │       ├── Ball/                      # ✅ 已完成
     │       │   ├── BallController.cs
     │       │   └── TrajectoryRenderer.cs
-    │       ├── UI/
-    │       │   ├── StatusPanel.cs         # ✅
-    │       │   └── ScorePanel.cs          # ❌ 待写：评分 UI
+    │       ├── UI/                        # ✅ 已完成
+    │       │   ├── StatusPanel.cs
+    │       │   ├── ScorePanel.cs
+    │       │   └── IntroPanel.cs          # 🔲 P7.1 待写：启动画面
     │       ├── Camera/                    # ✅ 已完成
-    │       ├── Simulation/
-    │       │   └── FakeDataGenerator.cs   # ✅
-    │       ├── Scenario/                  # ❌ 全部待写
-    │       │   ├── Scenario.cs            # ScriptableObject 定义
-    │       │   ├── ScenarioPlayer.cs      # 关键帧插值播放器
-    │       │   └── ScenarioTrigger.cs     # 监听 OnShotFired 触发
-    │       └── XR/                        # ❌ 待写
-    │           └── XRSetup.cs             # XR Origin 配置
-    ├── Assets/Scenarios/                  # ❌ 待建
+    │       │   ├── SmoothFollow.cs
+    │       │   ├── CameraSwitcher.cs
+    │       │   └── PCCameraController.cs
+    │       ├── Simulation/                # ✅ 已完成
+    │       │   └── FakeDataGenerator.cs
+    │       ├── Scenario/                  # ✅ 已完成
+    │       │   ├── Scenario.cs
+    │       │   ├── ScenarioPlayer.cs
+    │       │   ├── ScenarioTrigger.cs
+    │       │   └── ScenarioFactory.cs
+    │       ├── XR/                        # ✅ 已完成
+    │       │   └── XRSetup.cs
+    │       ├── Flow/                      # 🔲 P7 待写：演示流程
+    │       │   ├── FlowManager.cs         # 状态机主控
+    │       │   ├── IntroManager.cs        # 启动画面
+    │       │   ├── VRShootController.cs   # 体感射门
+    │       │   ├── ReplayDirector.cs      # 演算导演
+    │       │   └── AudioManager.cs        # BGM + 音效
+    │       └── Editor/                    # ✅ 已完成
+    │           ├── BuildAndroid.cs
+    │           └── ScenarioFactory.cs
+    ├── Assets/Scenarios/                  # ✅ 已完成
     │   ├── ScoreSuccess.asset
     │   ├── Intercepted.asset
     │   └── ShotMissed.asset
@@ -221,16 +382,20 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1–P6 已完成**：场景 + 剧本 + 评分 + PC 自由视角全跑通。
+**P1–P6.5 已完成**：场景优化完毕，剧本 + 评分 + PC 自由视角 + 视觉打磨（球场/后处理/特效/灯光/多机位/HUD）全跑通。
 
-**P7 阻塞**：Android SDK 因网络问题未安装，APK 无法构建。手柄 Trigger 输入代码已就绪（ScenarioTrigger 支持键盘 1/2/3/Space + Quest 手柄 Trigger/A/X/B）。
+**P7 演示流程** 是当前主战场，不依赖 Android：
 
-**VR Link 测试阻塞**：Quest 3S 需 PC 端 Oculus Runtime（Meta Quest Link 应用），未安装时 Unity 无法推送画面到头显。
+1. **P7.1 IntroManager** — 启动画面 Canvas + 文字淡入淡出（当天可完成）
+2. **P7.2 VRShootController** — 体感射门（PC 端用鼠标模拟先跑通逻辑）
+3. **P7.3 ReplayDirector** — 演算导演（对接现有 ScenarioPlayer）
+4. **P7.4 AudioManager** — BGM + 音效（准备音频素材）
 
-**下一步可选**：
-- 等网络 → 装 Android SDK → Build APK → MQDH sideload 到 Quest 3S
-- 先做 P8（Quest 帧率优化，PC 上即可调试）
-- 先做 P9（演示视频，PC 录屏即可，不必须头显）
+**PC 端优先策略**：所有 P7 逻辑先在 PC 上用键盘/鼠标模拟跑通，Quest 手柄适配是最后一步。
+
+**P8（APK 构建）** 继续阻塞：Android SDK 待网络安装。
+**P9（性能优化）** 可穿插进行，不阻塞 P7。
+**P10（演示视频）** P7 跑通后录屏即可。
 
 ---
 

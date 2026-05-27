@@ -15,6 +15,15 @@ namespace SoccerBot
         [Header("Input")]
         [SerializeField] private KeyCode _switchKey = KeyCode.C;
 
+        [Header("Direct-Select Cameras (1/2/3)")]
+        [Tooltip("Camera names bound to keys Alpha1/2/3. Looked up via SwitchTo at runtime.")]
+        [SerializeField] private string _key1Name = "OverheadCam";
+        [SerializeField] private string _key2Name = "SideCam";
+        [SerializeField] private string _key3Name = "BehindRobotCam";
+        [SerializeField] private Camera _key1Camera;
+        [SerializeField] private Camera _key2Camera;
+        [SerializeField] private Camera _key3Camera;
+
         private int _currentIndex = 0;
 
         void Start()
@@ -24,6 +33,11 @@ namespace SoccerBot
             {
                 _cameras.AddRange(FindObjectsByType<Camera>(FindObjectsSortMode.None));
             }
+
+            // Auto-resolve direct-select cameras by name if not assigned
+            if (_key1Camera == null) _key1Camera = FindByName(_key1Name);
+            if (_key2Camera == null) _key2Camera = FindByName(_key2Name);
+            if (_key3Camera == null) _key3Camera = FindByName(_key3Name);
 
             // Enable only the first camera
             for (int i = 0; i < _cameras.Count; i++)
@@ -41,12 +55,45 @@ namespace SoccerBot
             }
         }
 
+        private Camera FindByName(string n)
+        {
+            if (string.IsNullOrEmpty(n)) return null;
+            foreach (var c in _cameras) if (c != null && c.name == n) return c;
+            // Fall back to a scene-wide search
+            foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None))
+                if (c.name == n) return c;
+            return null;
+        }
+
         void Update()
         {
             if (Input.GetKeyDown(_switchKey))
             {
                 SwitchCamera();
             }
+
+            // Direct-select via 1 / 2 / 3
+            if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchToCamera(_key1Camera);
+            if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchToCamera(_key2Camera);
+            if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchToCamera(_key3Camera);
+        }
+
+        private void SwitchToCamera(Camera target)
+        {
+            if (target == null) return;
+            int idx = _cameras.IndexOf(target);
+            if (idx < 0)
+            {
+                // Not registered yet — add and continue
+                _cameras.Add(target);
+                idx = _cameras.Count - 1;
+                var al = target.GetComponent<AudioListener>();
+                if (al != null) al.enabled = false;
+            }
+            if (_cameras[_currentIndex] != null)
+                _cameras[_currentIndex].enabled = false;
+            _currentIndex = idx;
+            target.enabled = true;
         }
 
         /// <summary>Switch to the next camera in the list.</summary>
