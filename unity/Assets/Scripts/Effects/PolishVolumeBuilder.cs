@@ -21,7 +21,7 @@ namespace SoccerBot
         [Header("Color Adjustments")]
         [SerializeField, Range(-100f, 100f)] private float _contrast    = 10f;
         [SerializeField, Range(-100f, 100f)] private float _saturation  = 15f;
-        [SerializeField, Range(-100f, 100f)] private float _postExposure = 0f;
+        [SerializeField, Range(-100f, 100f)] private float _postExposure = 0.3f;
 
         void Awake()
         {

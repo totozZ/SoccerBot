@@ -1,8 +1,11 @@
 // CameraSwitcher.cs — Switch between multiple camera views.
-// Press C to cycle cameras, or assign to specific keys.
+// Press C to cycle cameras, or 1/2/3 to jump to direct-select cameras.
+// Uses the New Input System (Keyboard.current) so input survives focus loss
+// in Unity 6's "Both" Active Input Handling mode.
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace SoccerBot
 {
@@ -12,11 +15,8 @@ namespace SoccerBot
         [Tooltip("Cameras in order of cycling. First one is default.")]
         [SerializeField] private List<Camera> _cameras = new List<Camera>();
 
-        [Header("Input")]
-        [SerializeField] private KeyCode _switchKey = KeyCode.C;
-
         [Header("Direct-Select Cameras (1/2/3)")]
-        [Tooltip("Camera names bound to keys Alpha1/2/3. Looked up via SwitchTo at runtime.")]
+        [Tooltip("Camera names bound to keys Digit1/2/3. Resolved at Start if not assigned.")]
         [SerializeField] private string _key1Name = "OverheadCam";
         [SerializeField] private string _key2Name = "SideCam";
         [SerializeField] private string _key3Name = "BehindRobotCam";
@@ -67,15 +67,15 @@ namespace SoccerBot
 
         void Update()
         {
-            if (Input.GetKeyDown(_switchKey))
-            {
-                SwitchCamera();
-            }
+            var kb = Keyboard.current;
+            if (kb == null) return;
+
+            if (kb.cKey.wasPressedThisFrame) SwitchCamera();
 
             // Direct-select via 1 / 2 / 3
-            if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchToCamera(_key1Camera);
-            if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchToCamera(_key2Camera);
-            if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchToCamera(_key3Camera);
+            if (kb.digit1Key.wasPressedThisFrame) SwitchToCamera(_key1Camera);
+            if (kb.digit2Key.wasPressedThisFrame) SwitchToCamera(_key2Camera);
+            if (kb.digit3Key.wasPressedThisFrame) SwitchToCamera(_key3Camera);
         }
 
         private void SwitchToCamera(Camera target)

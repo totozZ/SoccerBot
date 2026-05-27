@@ -16,14 +16,25 @@ namespace SoccerBot
 
         [Header("Settings")]
         [SerializeField] private float _updateInterval = 0.15f;
-        [Tooltip("When false, the entire panel is hidden — keep off for demo recordings.")]
-        [SerializeField] private bool _showInDemo = false;
+        [Tooltip("When false, the entire panel is hidden — keep on for演示 (only Status + Pose are shown if _demoMode is on).")]
+        [SerializeField] private bool _showInDemo = true;
+        [Tooltip("Demo mode hides the noisy Shooter/Vision lines and keeps only Status + Pose.")]
+        [SerializeField] private bool _demoMode = true;
 
         private float _timer;
 
         void Start()
         {
-            if (!_showInDemo) gameObject.SetActive(false);
+            if (!_showInDemo)
+            {
+                gameObject.SetActive(false);
+                return;
+            }
+            if (_demoMode)
+            {
+                if (_shooterText != null) _shooterText.gameObject.SetActive(false);
+                if (_visionText  != null) _visionText.gameObject.SetActive(false);
+            }
             UpdateUI();
         }
 
@@ -47,6 +58,8 @@ namespace SoccerBot
             var pos = gm.Robot.position;
             var rot = gm.Robot.rotation.eulerAngles.y;
             SetText(_poseText, $"Pose: X={pos.x:F2}  Z={pos.z:F2}  Yaw={rot:F1}°");
+
+            if (_demoMode) return;
 
             var s = gm.Shooter;
             SetText(_shooterText,
