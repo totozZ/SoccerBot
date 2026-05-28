@@ -1,19 +1,21 @@
 // MatchFlowController.cs — One-shot match loop driver.
 //
 // Phase order:
-//   Setup       ball pinned to robot, NPCs hidden
+//   Setup       ball pinned to robot, NPCs stand on the field next to the player
 //   Pass        ball flies parabolically from robot to player's foot zone
 //   Possession  ball pinned to player, FPSPlayerController.ShootingEnabled = true
-//   Shot        player released LMB → pick scenario by power, ScenarioTrigger.ForcePlay
-//   Score       waits for ScenarioPlayer.OnScenarioComplete + ScorePanel display
+//   Shot        player released LMB → DoTeammateShot or scenario based on power
+//   Score       ScorePanel displays, camera reparents
 //   Cooldown    fixed pause, then back to Setup
 //
-// Power → scenario routing (with optional ±jitter):
-//   power >= _scoreThreshold (0.7) → index 0 (ScoreSuccess)
-//   power >= _missThreshold  (0.4) → index 2 (ShotMissed)
-//   else                            → index 1 (Intercepted)
+// Power → outcome routing (with optional ±jitter):
+//   power >= _scoreThreshold (0.7) → DoTeammateShot to GoalTarget_In   (Score)
+//   power >= _missThreshold  (0.4) → DoTeammateShot to GoalTarget_Miss (Missed)
+//   else                            → ScenarioTrigger.ForcePlay(1)     (Intercepted)
 //
-// Indices match the ScenarioTrigger._scenarios list order configured in scene.
+// Score and Miss are driven directly by MatchFlow (Lerp + parabolic Y) so the ball
+// always reaches the goal area. Intercepted falls back to ScenarioPlayer because
+// NPC interactions are richer there.
 
 using System.Collections;
 using UnityEngine;
@@ -58,6 +60,31 @@ namespace SoccerBot
         [Tooltip("Index 2 (ShotMissed) when power >= this; otherwise index 1 (Intercepted).")]
         [SerializeField, Range(0.1f, 0.7f)] private float _missThreshold = 0.4f;
         [SerializeField, Range(0f, 0.3f)] private float _randomJitter = 0.10f;
+
+        [Header("Teammate Shot Targets (world space)")]
+        [Tooltip("Optional. If wired, used as the in-goal target. Otherwise falls back to _goalTargetInPos.")]
+        [SerializeField] private Transform _goalTargetIn;
+        [Tooltip("Optional. If wired, used as the miss target. Otherwise falls back to _goalTargetMissPos.")]
+        [SerializeField] private Transform _goalTargetMiss;
+        [SerializeField] private Vector3 _goalTargetInPos   = new Vector3(0f,   0.8f, -9.5f);
+        [SerializeField] private Vector3 _goalTargetMissPos = new Vector3(3.5f, 0.5f, -9.5f);
+
+        [Header("Teammate Shot Animation")]
+        [SerializeField] private float _shotPassToTeammate = 0.6f;     // ball flight time from player to teammate's foot
+        [SerializeField] private float _teammateAimDuration = 0.3f;     // teammate yaw rotation time
+        [SerializeField] private float _teammateAimHold     = 0.2f;     // hold after aiming, before kick
+        [SerializeField] private float _shotFlightTime = 1.4f;          // ball flight time from teammate to goal
+        [SerializeField] private float _shotApex = 2.5f;                // peak height of the kick arc
+        [SerializeField] private float _teammateRunDistance = 2.0f;     // forward dash distance during the kick
+        [SerializeField] private float _teammateRunFraction = 0.3f;     // dash completes within this fraction of _shotFlightTime
+        [SerializeField] private float _resultHoldDelay = 0.3f;         // pause after ball hits target before showing ScorePanel
+
+        [Header("Score Display Data (wire 2 .asset files)")]
+        [Tooltip("Wire ScoreSuccess.asset — used as data carrier for ScorePanel when player scores.")]
+        [SerializeField] private Scenario _scoreSuccessData;
+        [Tooltip("Wire ShotMissed.asset — used as data carrier for ScorePanel when player misses.")]
+        [SerializeField] private Scenario _shotMissedData;
+        [SerializeField] private ScorePanel _scorePanel;
 
         public Phase CurrentPhase { get; private set; } = Phase.Idle;
 
@@ -132,6 +159,18 @@ namespace SoccerBot
                 var t = _fpsAnchor.Find("FpsCamera");
                 if (t != null) _fpsCamera = t;
             }
+            // Goal target markers (optional). Fall back to default Vector3 if missing.
+            if (_goalTargetIn == null)
+            {
+                var go = GameObject.Find("GoalTarget_In");
+                if (go != null) _goalTargetIn = go.transform;
+            }
+            if (_goalTargetMiss == null)
+            {
+                var go = GameObject.Find("GoalTarget_Miss");
+                if (go != null) _goalTargetMiss = go.transform;
+            }
+            if (_scorePanel == null) _scorePanel = FindFirstObjectByType<ScorePanel>();
         }
 
         void OnDestroy()
@@ -254,10 +293,10 @@ namespace SoccerBot
                 _player.ShootingEnabled = false;
                 _player.MovementEnabled = false;
             }
-            if (_ball != null) _ball.Detach();          // let the scenario take over
+            if (_ball != null) _ball.Detach();
 
-            // ★ Bug 1 fix: detach FpsCamera so the player keeps watching from where
-            // they fired, rather than the camera tracking Player or Teammate.
+            // Detach FpsCamera so the player keeps watching from where they fired,
+            // rather than the camera tracking Player or Teammate during the kick.
             if (_fpsCamera != null)
             {
                 _camRestPos = _fpsCamera.position;
@@ -265,36 +304,138 @@ namespace SoccerBot
                 _fpsCamera.SetParent(null, true);
             }
 
-            // ★ Bug 3 fix: ScenarioPlayer's pre-baked +Z trajectory now anchors to
-            // Player's transform — and Player.rotation already equals the camera yaw
-            // (FPSPlayerController writes yaw to transform.rotation), so the ball
-            // flies wherever the player was aiming. No extra rotation work needed.
-            if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
-
             float effectivePower = Mathf.Clamp01(power01 + Random.Range(-_randomJitter, _randomJitter));
-            int idx;
-            if (effectivePower >= _scoreThreshold)      idx = 0;   // ScoreSuccess
-            else if (effectivePower >= _missThreshold)  idx = 2;   // ShotMissed
-            else                                        idx = 1;   // Intercepted
 
-            Debug.Log($"[MatchFlow] Shot power={power01:F2} (eff={effectivePower:F2}) → scenario[{idx}]");
-
-            if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(idx);
+            // Score / Missed → MatchFlow drives the ball directly via DoTeammateShot.
+            // Intercepted (low power) → fall back to ScenarioPlayer (NPC interactions
+            // are richer there and don't need precise targeting).
+            if (effectivePower >= _scoreThreshold)
+            {
+                Debug.Log($"[MatchFlow] Shot power={power01:F2} (eff={effectivePower:F2}) → SCORE");
+                Vector3 target = _goalTargetIn != null ? _goalTargetIn.position : _goalTargetInPos;
+                StartCoroutine(DoTeammateShot(target, _scoreSuccessData));
+            }
+            else if (effectivePower >= _missThreshold)
+            {
+                Debug.Log($"[MatchFlow] Shot power={power01:F2} (eff={effectivePower:F2}) → MISS");
+                Vector3 target = _goalTargetMiss != null ? _goalTargetMiss.position : _goalTargetMissPos;
+                StartCoroutine(DoTeammateShot(target, _shotMissedData));
+            }
+            else
+            {
+                Debug.Log($"[MatchFlow] Shot power={power01:F2} (eff={effectivePower:F2}) → INTERCEPTED (scenario)");
+                if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
+                if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(1);
+            }
         }
 
-        private void HandleScenarioComplete(Scenario s)
+        // Teammate runs forward and kicks the ball to a target (Score or Miss).
+        // Replaces the old ScenarioPlayer-driven Score/Missed paths so the ball
+        // actually reaches the goal area rather than stopping short of design coords.
+        private IEnumerator DoTeammateShot(Vector3 targetWorld, Scenario panelData)
+        {
+            // ─ Phase 1: ball arcs from current position (player's feet) to teammate's foot ─
+            if (_ball != null && _teammateTransform != null)
+            {
+                Vector3 receivePos = _teammateTransform.position
+                                    + new Vector3(0f, 0.3f, 0f)
+                                    + _teammateTransform.forward * 0.4f;
+                yield return ParabolicLerp(_ball.transform, _ball.transform.position, receivePos,
+                                           _shotPassToTeammate, 0.8f);
+            }
+
+            // ─ Phase 2: teammate slerps to face the target ─
+            if (_teammateTransform != null)
+            {
+                Vector3 toTarget = targetWorld - _teammateTransform.position; toTarget.y = 0f;
+                if (toTarget.sqrMagnitude > 0.01f)
+                {
+                    Quaternion startRot = _teammateTransform.rotation;
+                    Quaternion targetRot = Quaternion.LookRotation(toTarget);
+                    float rt = 0f;
+                    while (rt < _teammateAimDuration)
+                    {
+                        rt += Time.deltaTime;
+                        _teammateTransform.rotation = Quaternion.Slerp(
+                            startRot, targetRot, Mathf.Clamp01(rt / _teammateAimDuration));
+                        yield return null;
+                    }
+                    _teammateTransform.rotation = targetRot;
+                }
+            }
+            yield return new WaitForSeconds(_teammateAimHold);
+
+            // ─ Phase 3: teammate dashes forward while ball arcs to target ─
+            Vector3 teammateStart = _teammateTransform != null ? _teammateTransform.position : Vector3.zero;
+            Vector3 teammateEnd   = _teammateTransform != null
+                ? teammateStart + _teammateTransform.forward * _teammateRunDistance
+                : Vector3.zero;
+            Vector3 ballStart = _ball != null ? _ball.transform.position : Vector3.zero;
+
+            float t = 0f;
+            float runWindow = Mathf.Max(0.01f, _shotFlightTime * _teammateRunFraction);
+            while (t < _shotFlightTime)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / _shotFlightTime);
+
+                if (_teammateTransform != null)
+                {
+                    float runU = Mathf.Clamp01(t / runWindow);
+                    _teammateTransform.position = Vector3.Lerp(teammateStart, teammateEnd, runU);
+                }
+
+                if (_ball != null)
+                {
+                    Vector3 pos = Vector3.Lerp(ballStart, targetWorld, u);
+                    pos.y += _shotApex * 4f * u * (1f - u);
+                    _ball.transform.position = pos;
+                }
+                yield return null;
+            }
+            if (_ball != null) _ball.transform.position = targetWorld;
+
+            // ─ Phase 4: pause, then show score and resolve ─
+            yield return new WaitForSeconds(_resultHoldDelay);
+            if (_scorePanel != null && panelData != null) _scorePanel.Show(panelData);
+            HandleShotResolved();
+        }
+
+        private IEnumerator ParabolicLerp(Transform target, Vector3 start, Vector3 end, float duration, float apex)
+        {
+            float u = 0f;
+            while (u < duration)
+            {
+                u += Time.deltaTime;
+                float p = Mathf.Clamp01(u / duration);
+                Vector3 pos = Vector3.Lerp(start, end, p);
+                pos.y += apex * 4f * p * (1f - p);
+                target.position = pos;
+                yield return null;
+            }
+            target.position = end;
+        }
+
+        // Shared wrap-up for both DoTeammateShot (code path) and HandleScenarioComplete
+        // (Intercepted scenario path): flips phase, reparents the camera.
+        private void HandleShotResolved()
         {
             if (CurrentPhase != Phase.Shot) return;
             CurrentPhase = Phase.Score;
 
-            // Reparent camera back to FpsAnchor so FPSPlayerController's look
-            // controls work again on the next round.
             if (_fpsCamera != null && _fpsAnchor != null)
             {
                 _fpsCamera.SetParent(_fpsAnchor, true);
                 _fpsCamera.localPosition = Vector3.zero;
                 _fpsCamera.localRotation = Quaternion.identity;
             }
+        }
+
+        private void HandleScenarioComplete(Scenario s)
+        {
+            // Intercepted scenario reaches us through this callback. Score/Missed
+            // are handled by DoTeammateShot directly and never enter this path.
+            HandleShotResolved();
         }
     }
 }

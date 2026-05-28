@@ -3,7 +3,7 @@
 // MatchFlowController and PowerBarUI consume.
 //
 // Inputs (New Input System, multi-source — works on PC + Quest):
-//   WASD                              — strafe / forward, ground-locked (PC only)
+//   WASD / Quest left thumbstick      — strafe / forward, ground-locked
 //   Mouse RMB                         — hold + drag to look around (PC only; VR uses head tracking)
 //   Mouse LMB / Quest right trigger / — hold to charge a shot, release to fire
 //   Quest right A button / Quest left trigger
@@ -58,6 +58,7 @@ namespace SoccerBot
         // Multi-source shoot trigger so PC mouse, Quest trigger, and Quest A button
         // all work without an Input Actions asset. Created in OnEnable, disposed in OnDisable.
         private InputAction _shootAction;
+        private InputAction _moveAction;   // Quest left thumbstick (Vector2)
 
         void OnEnable()
         {
@@ -68,6 +69,10 @@ namespace SoccerBot
             _shootAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
             _shootAction.AddBinding("<XRController>{LeftHand}/primaryButton");    // Quest X button
             _shootAction.Enable();
+
+            _moveAction = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
+            _moveAction.AddBinding("<XRController>{LeftHand}/thumbstick");
+            _moveAction.Enable();
         }
 
         void OnDisable()
@@ -77,6 +82,12 @@ namespace SoccerBot
                 _shootAction.Disable();
                 _shootAction.Dispose();
                 _shootAction = null;
+            }
+            if (_moveAction != null)
+            {
+                _moveAction.Disable();
+                _moveAction.Dispose();
+                _moveAction = null;
             }
         }
 
@@ -110,7 +121,7 @@ namespace SoccerBot
             // kb may be null on Quest standalone — that's fine, charge logic falls back to XR.
 
             HandleLook(mouse);
-            if (kb != null) HandleMove(kb);
+            HandleMove(kb);
             HandleCharge(kb);
             ApplyChargeRecoil();
         }
@@ -136,12 +147,26 @@ namespace SoccerBot
         {
             if (!MovementEnabled) return;
 
-            float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
-            float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
+            // Combine WASD (PC) with Quest left thumbstick. Either source can drive movement.
+            float x = 0f, z = 0f;
+            if (kb != null)
+            {
+                x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
+                z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
+            }
+            if (_moveAction != null)
+            {
+                Vector2 stick = _moveAction.ReadValue<Vector2>();
+                if (Mathf.Abs(stick.x) > 0.15f) x = stick.x;   // deadzone
+                if (Mathf.Abs(stick.y) > 0.15f) z = stick.y;
+            }
             if (x == 0f && z == 0f) return;
 
-            Vector3 fwd = transform.forward; fwd.y = 0f; fwd.Normalize();
-            Vector3 right = transform.right;  right.y = 0f; right.Normalize();
+            // Direction follows the camera yaw so "forward" matches where the player is looking
+            // (head tracking in VR, mouse-yaw on PC). Falls back to transform.forward.
+            Transform dirRef = _fpsCamera != null ? _fpsCamera.transform : transform;
+            Vector3 fwd = dirRef.forward; fwd.y = 0f; fwd.Normalize();
+            Vector3 right = dirRef.right; right.y = 0f; right.Normalize();
             Vector3 move = (right * x + fwd * z).normalized * _moveSpeed * Time.deltaTime;
             transform.position += move;
         }

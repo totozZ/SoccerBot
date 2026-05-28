@@ -24,6 +24,8 @@ namespace SoccerBot
         [SerializeField] private bool _suppressDuringPlayback = true;
         [Tooltip("Editor-only: allow 1/2/3/Space to force scenarios. Off when MatchFlowController owns the loop.")]
         [SerializeField] private bool _allowKeyboardOverride = false;
+        [Tooltip("Allow Quest trigger / A / B to ForcePlay a scenario directly. Off when MatchFlowController owns the shot routing — otherwise the trigger fires a scenario before the player finishes charging.")]
+        [SerializeField] private bool _allowControllerOverride = false;
 
         private int _seqIndex;
         private InputAction _triggerAction;
@@ -90,7 +92,10 @@ namespace SoccerBot
             }
 
             // Quest controller: trigger, A/X, or B/Y → next scenario.
-            if (!_player.IsPlaying)
+            // Disabled by default — MatchFlowController.HandlePlayerShot owns the
+            // routing now, and intercepting the trigger here fires a scenario
+            // before the player finishes their charge.
+            if (_allowControllerOverride && !_player.IsPlaying)
             {
                 if (_triggerAction.WasPressedThisFrame() ||
                     _primaryAction.WasPressedThisFrame() ||

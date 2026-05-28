@@ -834,6 +834,21 @@ MonoBehaviour:
   _scoreThreshold: 0.7
   _missThreshold: 0.4
   _randomJitter: 0.1
+  _goalTargetIn: {fileID: 0}
+  _goalTargetMiss: {fileID: 0}
+  _goalTargetInPos: {x: 0, y: 0.8, z: -9.5}
+  _goalTargetMissPos: {x: 3.5, y: 0.5, z: -9.5}
+  _shotPassToTeammate: 0.6
+  _teammateAimDuration: 0.3
+  _teammateAimHold: 0.2
+  _shotFlightTime: 1.4
+  _shotApex: 2.5
+  _teammateRunDistance: 2
+  _teammateRunFraction: 0.3
+  _resultHoldDelay: 0.3
+  _scoreSuccessData: {fileID: 11400000, guid: 9b1f45eef72f1484bbbf83ea20bdce3e, type: 2}
+  _shotMissedData: {fileID: 11400000, guid: 1bb34296eb2368142bac605c2e873a57, type: 2}
+  _scorePanel: {fileID: 2141899327}
 --- !u!1 &111331723
 GameObject:
   m_ObjectHideFlags: 0
@@ -4987,6 +5002,7 @@ MonoBehaviour:
   _mode: 0
   _suppressDuringPlayback: 1
   _allowKeyboardOverride: 0
+  _allowControllerOverride: 0
 --- !u!4 &957557380
 Transform:
   m_ObjectHideFlags: 0
