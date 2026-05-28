@@ -2,11 +2,12 @@
 // Drives the FPS camera and emits OnChargeChanged / OnShoot events that the
 // MatchFlowController and PowerBarUI consume.
 //
-// Inputs (New Input System, matches PCCameraController style):
-//   WASD          — strafe / forward, ground-locked
-//   Mouse RMB     — hold + drag to look around
-//   Mouse LMB     — hold to charge a shot, release to fire
-//   Esc           — release any active charge (safety)
+// Inputs (New Input System, multi-source — works on PC + Quest):
+//   WASD                              — strafe / forward, ground-locked (PC only)
+//   Mouse RMB                         — hold + drag to look around (PC only; VR uses head tracking)
+//   Mouse LMB / Quest right trigger / — hold to charge a shot, release to fire
+//   Quest right A button / Quest left trigger
+//   Esc                               — release any active charge (safety)
 //
 // Attach this to the Teammate GameObject. Wire _cameraAnchor to a child
 // transform at eye height (e.g. y=1.6). The FPS camera should be a child
@@ -54,6 +55,31 @@ namespace SoccerBot
         private float _chargeTime;
         private Vector3 _cameraRestLocalPos;
 
+        // Multi-source shoot trigger so PC mouse, Quest trigger, and Quest A button
+        // all work without an Input Actions asset. Created in OnEnable, disposed in OnDisable.
+        private InputAction _shootAction;
+
+        void OnEnable()
+        {
+            _shootAction = new InputAction("Shoot", InputActionType.Button);
+            _shootAction.AddBinding("<Mouse>/leftButton");
+            _shootAction.AddBinding("<XRController>{RightHand}/triggerPressed");
+            _shootAction.AddBinding("<XRController>{RightHand}/primaryButton");   // Quest A button
+            _shootAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
+            _shootAction.AddBinding("<XRController>{LeftHand}/primaryButton");    // Quest X button
+            _shootAction.Enable();
+        }
+
+        void OnDisable()
+        {
+            if (_shootAction != null)
+            {
+                _shootAction.Disable();
+                _shootAction.Dispose();
+                _shootAction = null;
+            }
+        }
+
         void Start()
         {
             // Auto-resolve children if not wired in Inspector. Convention:
@@ -81,11 +107,11 @@ namespace SoccerBot
         {
             var kb = Keyboard.current;
             var mouse = Mouse.current;
-            if (kb == null) return;
+            // kb may be null on Quest standalone — that's fine, charge logic falls back to XR.
 
             HandleLook(mouse);
-            HandleMove(kb);
-            HandleCharge(mouse, kb);
+            if (kb != null) HandleMove(kb);
+            HandleCharge(kb);
             ApplyChargeRecoil();
         }
 
@@ -122,9 +148,9 @@ namespace SoccerBot
 
         // ── Charge & Shoot ───────────────────────────────────
 
-        private void HandleCharge(Mouse mouse, Keyboard kb)
+        private void HandleCharge(Keyboard kb)
         {
-            if (mouse == null) return;
+            if (_shootAction == null) return;
 
             // Cancel charge if disabled mid-way (e.g. scenario starts)
             if (!ShootingEnabled && _charging)
@@ -132,7 +158,7 @@ namespace SoccerBot
                 CancelCharge();
                 return;
             }
-            if (kb.escapeKey.wasPressedThisFrame && _charging)
+            if (kb != null && kb.escapeKey.wasPressedThisFrame && _charging)
             {
                 CancelCharge();
                 return;
@@ -140,7 +166,7 @@ namespace SoccerBot
 
             if (!ShootingEnabled) return;
 
-            if (mouse.leftButton.wasPressedThisFrame)
+            if (_shootAction.WasPressedThisFrame())
             {
                 _charging = true;
                 _chargeTime = 0f;
@@ -155,7 +181,7 @@ namespace SoccerBot
                 float power = Mathf.Clamp01(_chargeTime / _maxChargeTime);
                 OnChargeChanged?.Invoke(power);
 
-                if (mouse.leftButton.wasReleasedThisFrame)
+                if (_shootAction.WasReleasedThisFrame())
                 {
                     Vector3 dir = _fpsCamera != null
                         ? _fpsCamera.transform.forward

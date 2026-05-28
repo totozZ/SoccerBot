@@ -10,19 +10,19 @@
 - [x] **P5.1** 球的发射起点跟随机器人当前位置
 - [x] **P6** XR Origin + PCCameraController 自由视角（PC 端右键拖拽 + WASD 浏览）
 - [x] **P6.5** 视觉打磨：程序化足球场 / URP 后处理 Volume / Outcome 粒子特效 / 4 角 SpotLight / 3 静态机位（数字键 1/2/3）/ HUD 减负 + 顶部比分牌
-- [ ] **P7** 演示流程状态机 FlowManager（串联启动→比赛→操作→演算→评分全流程）
+- [x] **P7** 演示流程状态机 FlowManager（串联启动→比赛→操作→演算→评分全流程）
 - [ ] **P7.1** IntroManager 启动画面（黑底白字 + 比赛背景简介 + BGM 淡入）
 - [x] **P7.2 (PC 原型)** MatchFlowController + FPSPlayerController + PowerBarUI（一轮一传 / 长按蓄力 / 力度+随机选剧本）
-- [ ] **P7.2 (VR 完整版)** VRShootController 体感射门（手柄速度/方向追踪 → 射门/传球判定）
+- [ ] **P7.2 (VR 完整版)** Quest 手柄绑定（A/Trigger 蓄力射门 + 体感方向追踪）
 - [ ] **P7.3** ReplayDirector 演算导演（根据玩家操作选分支剧本 + 慢动作回放）
 - [ ] **P7.4** AudioManager BGM 管理（背景音乐 + 音效事件触发）
-- [ ] **P8** Quest 3S APK 构建 + 手柄输入适配（代码已写，待 Android 环境）
+- [x] **P8** Quest 3S APK 构建 + 部署（已成功 sideload 启动，A 键意外可触发射门）
 - [ ] **P9** 性能优化（Quest 帧率 / Draw Call / 脚本热点）
 - [ ] **P10** 演示视频拍摄 + 剪辑
 
 ---
 
-> 版本: v6.3.0 | 日期: 2026-05-28 | 状态: P7.2 PC 原型完成（三角色架构：Robot 开场传球 / Player 玩家化身隐形 / Teammate 蓝色剧本 NPC；玩家 FPS + 一轮一传 + 蓄力射门 + 视角原地冻结看剧本演算），P7.1/7.3/7.4 待启动
+> 版本: v6.4.0 | 日期: 2026-05-28 | 状态: P7.2 PC 原型 + 4 项视觉打磨 + Quest 3S APK sideload 部署成功，VR 内可看到球场 / Robot 抛球 / 剧本演算（A 键意外可射门，明确手柄绑定为 P7.2 VR 完整版下一步）
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -112,7 +112,7 @@
 | **P6.5 视觉打磨** | ✅ 完成 | FieldBuilder 程序化球场（绿地/条纹/边线/中圈/双球门）+ PolishVolumeBuilder（Bloom/Vignette/ColorAdj/ACES）+ OutcomeFx（金/红/灰三种粒子）+ 4 角 SpotLight + 3 静态机位（OverheadCam/SideCam/BehindRobotCam，1/2/3 数字键直切）+ HUD `_showInDemo` 开关 + ScoreBoard 顶部比分牌 |
 | **P7.2 PC 原型** | ✅ 完成（v6.3 重构） | **三角色架构**：Robot（黄色海绵宝宝，`(0,0,-6)`，开场传球 NPC）/ Player（**新独立 GO**，`(0,0,2)` Y=180，挂 FpsAnchor+FpsCamera+FPSPlayerController，**隐形**，玩家化身）/ Teammate（蓝色，剧本驱动 NPC，仅 Shot 阶段 SetActive）。FPSPlayerController 加 `MovementEnabled` 门控（仅 Possession 开）。MatchFlowController 拆出 `_playerTransform`/`_teammateTransform`，HandlePlayerShot 改为 detach FpsCamera 冻结视角 + ScenarioPlayer.SetOrigin(Player) + 玩家 yaw 决定射门方向。ScenarioPlayer.cs 加 SetOrigin(Transform) API + posOffset Y 强制 0（修球陷地）。PowerBarUI / 力度阈值 / 一轮一传循环全保留 |
 | **演示流程其余项** | 🔲 P7.1/P7.3/P7.4 待启动 | Intro 启动画面 + ReplayDirector 演算导演 + AudioManager BGM + VR 体感射门完整版 |
-| **Quest 3S 部署** | ⚠️ 代码就绪 | BuildAndroid.cs + 手柄 Trigge 输入已写；Android 环境待网络安装 |
+| **Quest 3S 部署** | ✅ APK 跑通 | sideload 后 VR 内能看到球场 / Robot / 剧本演算；A 键已可触发射门（fallback 路径，需正式绑定）|
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
 ---
@@ -434,20 +434,23 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1–P6.5 + P7.2 PC 原型** 已完成：场景重构成 Robot / Player / Teammate 三角色架构，玩家循环（Setup → Pass → Possession → Shot → Score）跑通，蓄力射门 + 力度选剧本 + 视角原地冻结观看剧本演算。
+**P1–P6.5 + P7.2 PC 原型 + 视觉打磨 + P8 部署** 已完成：场景三角色架构、玩家循环跑通、4 项打磨修完（Robot 不飞冲 / 视角 1.3m / 射后视角不漂 / NPC Setup 阶段就站位）、APK 已 sideload 到 Quest 3S 启动成功。
 
-**P7 演示流程剩余项**（不依赖 Android）：
+**P7.2 VR 完整版（紧接下一步）**：A 键现在能射门是 Unity Input System 默认 fallback，不稳。要在 [FPSPlayerController.cs](unity/Assets/Scripts/Player/FPSPlayerController.cs) 里把鼠标 LMB 输入扩成 Quest 手柄通道：
+- 右手 trigger（或 A 键）→ 蓄力射门（替代当前 `Mouse.leftButton`）
+- 头显朝向（XR Camera.forward）→ 替代鼠标 yaw 当射门方向
+- 摇杆 / 触摸板 → 替代 WASD（Possession 阶段移动）
 
-1. **P7.1 IntroManager** — 启动画面 Canvas + 文字淡入淡出（当天可完成）
+**剩余演示流程**（不阻塞 Quest 测试）：
+
+1. **P7.1 IntroManager** — 启动画面 Canvas + 文字淡入淡出
 2. **P7.3 ReplayDirector** — 演算导演（剧本期间自动切镜 / 慢动作）
 3. **P7.4 AudioManager** — BGM + 音效（准备音频素材）
-4. **P7.2 (VR 完整版)** — VRShootController 体感射门，等 Quest 联调时做
 
-**PC 端优先策略**：所有 P7 逻辑先在 PC 上跑通，Quest 手柄适配是最后一步。
+**改进意见（plan 文档已记录）**：NPC 站位间距加倍 + 固定锚位 + 地面色块 + 剧本无缝衔接。优先级低于 P7.2 VR 输入。
 
-**P8（APK 构建）** 继续阻塞：Android SDK 待网络安装。
-**P9（性能优化）** 可穿插进行，不阻塞 P7。
-**P10（演示视频）** P7 跑通后录屏即可。
+**P9（性能优化）** 可穿插进行，Quest 帧率有问题先看。
+**P10（演示视频）** 等 P7.2 VR 输入跑通后录屏即可。
 
 ---
 

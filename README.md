@@ -125,7 +125,7 @@ SoccerBot/
 
 详见 [PLAN.md](PLAN.md)。
 
-**当前状态（2026-05-27）**：v6.1 — P1–P6.5 完成：剧本 + 评分 + PC 自由视角 + 视觉打磨（程序化球场 / URP 后处理 / Outcome 粒子 / 4 角 SpotLight / 3 静态机位 1/2/3 直切 / HUD 减负 + 顶部比分牌）全跑通。P7 演示流程开发中。P8 APK 构建代码就绪，Android 环境待网络安装。
+**当前状态（2026-05-28）**：v6.4 — P1–P6.5 + P7.2 PC 原型 + 视觉打磨 4 项（Robot 不飞冲 / 视角 1.3m / 射后视角不漂 / NPC Setup 站位）+ P8 Quest 3S APK sideload 部署成功，VR 内可看到球场 / Robot 抛球 / 剧本演算。下一步 P7.2 VR 完整版手柄绑定。
 
 ---
 

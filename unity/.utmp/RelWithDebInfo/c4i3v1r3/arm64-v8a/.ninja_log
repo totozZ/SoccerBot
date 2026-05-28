@@ -1,0 +1,12 @@
+# ninja log v5
+81	622	8016618415219187	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	a20980dc90850c56
+627	925	8016618418069310	C:/dev/SoccerBot/unity/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/c4i3v1r3/obj/arm64-v8a/libswappywrapper.so	aad78414b2275315
+50	1569	8016618424665834	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	ea7b281067c1936c
+40	1584	8016618424791448	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	ccaaa94d4d9648dc
+10	1601	8016618425007737	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	c9680a269f3b03c8
+70	1645	8016618425429616	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	6a00a883975521bb
+19	1683	8016618425813696	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	a3d23d1a645f5471
+29	1914	8016618428101309	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	e4aaf99259b5911b
+60	1918	8016618428144083	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	8464ceab49f5dff
+1	2034	8016618429349057	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	be1b2740fee9dd24
+2034	2158	8016618430593515	C:/dev/SoccerBot/unity/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/c4i3v1r3/obj/arm64-v8a/libgame.so	4bca0272ef07d728

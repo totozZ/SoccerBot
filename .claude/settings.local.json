@@ -182,7 +182,13 @@
       "Bash(curl -s -X POST \"http://localhost:8090/skill/component_set_property\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"MatchFlow\\\\\",\\\\\"componentType\\\\\":\\\\\"SoccerBot.MatchFlowController\\\\\",\\\\\"propertyName\\\\\":\\\\\"_teammateTransform\\\\\",\\\\\"referencePath\\\\\":\\\\\"Teammate\\\\\"}\" -m 10)",
       "Bash(curl -s -X POST \"http://localhost:8090/skill/component_set_property\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"MatchFlow\\\\\",\\\\\"componentType\\\\\":\\\\\"SoccerBot.MatchFlowController\\\\\",\\\\\"propertyName\\\\\":\\\\\"_player\\\\\",\\\\\"referencePath\\\\\":\\\\\"Player\\\\\"}\" -m 10)",
       "Bash(curl -s -X POST \"http://localhost:8090/skill/component_set_property\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"MatchFlow\\\\\",\\\\\"componentType\\\\\":\\\\\"SoccerBot.MatchFlowController\\\\\",\\\\\"propertyName\\\\\":\\\\\"_fpsAnchor\\\\\",\\\\\"referencePath\\\\\":\\\\\"Player/FpsAnchor\\\\\"}\" -m 10)",
-      "Bash(curl -s -X POST \"http://localhost:8090/skill/component_set_property\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"MatchFlow\\\\\",\\\\\"componentType\\\\\":\\\\\"SoccerBot.MatchFlowController\\\\\",\\\\\"propertyName\\\\\":\\\\\"_fpsCamera\\\\\",\\\\\"referencePath\\\\\":\\\\\"Player/FpsAnchor/FpsCamera\\\\\"}\" -m 10)"
+      "Bash(curl -s -X POST \"http://localhost:8090/skill/component_set_property\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"MatchFlow\\\\\",\\\\\"componentType\\\\\":\\\\\"SoccerBot.MatchFlowController\\\\\",\\\\\"propertyName\\\\\":\\\\\"_fpsCamera\\\\\",\\\\\"referencePath\\\\\":\\\\\"Player/FpsAnchor/FpsCamera\\\\\"}\" -m 10)",
+      "Skill(quest-build)",
+      "Skill(quest-build:*)",
+      "PowerShell(if \\(-not \\(Test-Path \"C:\\\\dev\"\\)\\) { New-Item -ItemType Directory \"C:\\\\dev\" | Out-Null }; cmd /c mklink /J C:\\\\dev\\\\SoccerBot \"C:\\\\Users\\\\95833\\\\Desktop\\\\WayiProject\\\\project\\\\足球机器人\\\\SoccerBot\")",
+      "PowerShell(Test-Path C:\\\\dev\\\\SoccerBot\\\\unity\\\\Assets\\\\Scenes\\\\Main.unity; \\(Get-Item C:\\\\dev\\\\SoccerBot\\).LinkType; \\(Get-Item C:\\\\dev\\\\SoccerBot\\).Target)",
+      "Skill(plan-sync)",
+      "Skill(plan-sync:*)"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"
