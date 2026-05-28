@@ -23,11 +23,15 @@ namespace SoccerBot
         [Header("Robot Movement")]
         [SerializeField] private float _moveSpeed = 2.0f;
         [SerializeField] private float _fieldBoundary = 8.0f;
+        [Tooltip("When false, the robot stays at its scene transform position. Demo presets keep this off so the scenario system fully owns the stage.")]
+        [SerializeField] private bool _robotPatrolEnabled = false;
 
         [Header("Shooter Simulation")]
         [SerializeField] private float _fireInterval = 5.0f;
         [SerializeField] private float _shooterRPM = 4000.0f;
         [SerializeField] private float _hoodAngle = 25.0f;
+        [Tooltip("When false, FakeData never fires on its own — MatchFlowController owns the shot timing.")]
+        [SerializeField] private bool _autoFire = false;
 
         [Header("Ball Trajectory")]
         [SerializeField] private float _launchSpeed = 15.0f;
@@ -46,8 +50,28 @@ namespace SoccerBot
 
         void Start()
         {
-            _robotPosition = Vector3.zero;
-            _robotHeading = 0f;
+            // Anchor to the Robot GameObject's pose, not this generator's GO
+            // (the generator typically sits on GameManager at world origin, which
+            // would otherwise SmoothDamp the Robot from its scene pos to (0,0,0)).
+            if (_robotPatrolEnabled)
+            {
+                _robotPosition = Vector3.zero;
+                _robotHeading = 0f;
+            }
+            else
+            {
+                var robot = GameObject.Find("Robot");
+                if (robot != null)
+                {
+                    _robotPosition = robot.transform.position;
+                    _robotHeading = robot.transform.eulerAngles.y;
+                }
+                else
+                {
+                    _robotPosition = transform.position;
+                    _robotHeading = transform.eulerAngles.y;
+                }
+            }
             _fireTimer = _fireInterval;
             ShooterData = new ShooterData
             {
@@ -74,6 +98,20 @@ namespace SoccerBot
         // ── Robot Movement (circular patrol pattern) ────────
         private void UpdateRobotMovement()
         {
+            if (!_robotPatrolEnabled)
+            {
+                // Hold the scene-placed pose; just refresh RobotData so HUD/listeners
+                // still get a valid snapshot every frame.
+                RobotData = new RobotData
+                {
+                    position = _robotPosition,
+                    rotation = Quaternion.Euler(0f, _robotHeading, 0f),
+                    velocity = Vector3.zero,
+                    angularVelocity = 0f
+                };
+                return;
+            }
+
             // Move in a lazy figure-8 / patrol pattern
             float t = _time * 0.5f;
             float targetX = Mathf.Sin(t) * _fieldBoundary * 0.7f;
@@ -108,6 +146,8 @@ namespace SoccerBot
         // ── Shooter Simulation ──────────────────────────────
         private void UpdateShooterSimulation()
         {
+            if (!_autoFire) return;
+
             _fireTimer -= Time.deltaTime;
 
             var sd = ShooterData;

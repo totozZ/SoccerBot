@@ -93,6 +93,25 @@ namespace SoccerBot
             if (_trajectoryRenderer != null) _trajectoryRenderer.Clear();
         }
 
+        // ── Possession (MatchFlow) ──────────────────────────
+        // Lightweight parenting helpers so MatchFlowController can pin the ball
+        // to the robot or the player without going through ScenarioPlayer.
+
+        public void AttachTo(Transform parent, Vector3 localOffset)
+        {
+            transform.SetParent(parent, true);
+            transform.localPosition = localOffset;
+            transform.localRotation = Quaternion.identity;
+            SetBallVisible(true);
+            _cometTrail.Clear();
+            _cometTrail.emitting = false;
+        }
+
+        public void Detach()
+        {
+            transform.SetParent(null, true);
+        }
+
         // ── External control (ScenarioPlayer) ───────────────
         // While external control is active, Update() suppresses GameManager-driven
         // pose updates. ScenarioPlayer drives _ballTransform directly.

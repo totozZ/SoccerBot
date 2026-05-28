@@ -15,9 +15,9 @@ namespace SoccerBot
     public class FieldBuilder : MonoBehaviour
     {
         [Header("Dimensions (meters)")]
-        [SerializeField] private float _halfWidth = 4.0f;
-        [SerializeField] private float _halfLength = 6.0f;
-        [SerializeField] private float _centerCircleRadius = 1.2f;
+        [SerializeField] private float _halfWidth = 6.0f;
+        [SerializeField] private float _halfLength = 9.0f;
+        [SerializeField] private float _centerCircleRadius = 1.8f;
 
         [Header("Colors")]
         [SerializeField] private Color _grassColor      = new Color(0.18f, 0.55f, 0.22f);
@@ -27,16 +27,16 @@ namespace SoccerBot
         [SerializeField] private Color _goalNetColor    = new Color(0.85f, 0.85f, 0.85f, 0.4f);
 
         [Header("Visual")]
-        [SerializeField] private float _lineWidth = 0.10f;
+        [SerializeField] private float _lineWidth = 0.12f;
         [SerializeField] private float _lineY     = 0.011f;   // Just above ground
         [SerializeField] private int   _circleSegments = 36;
-        [SerializeField] private int   _stripeCount = 12;
+        [SerializeField] private int   _stripeCount = 16;
 
         [Header("Goal")]
-        [SerializeField] private float _goalWidth     = 2.4f;
-        [SerializeField] private float _goalHeight    = 1.0f;
-        [SerializeField] private float _goalDepth     = 0.7f;
-        [SerializeField] private float _postThickness = 0.10f;
+        [SerializeField] private float _goalWidth     = 3.5f;
+        [SerializeField] private float _goalHeight    = 1.5f;
+        [SerializeField] private float _goalDepth     = 1.0f;
+        [SerializeField] private float _postThickness = 0.12f;
 
         void Awake() => Build();
 

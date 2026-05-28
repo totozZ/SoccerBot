@@ -144,6 +144,11 @@ namespace SoccerBot
             go.transform.SetParent(transform, false);
             var ps = go.AddComponent<ParticleSystem>();
 
+            // ParticleSystem starts playing the moment it's added; we have to stop
+            // it before any main.* property assignment, or Unity logs warnings like
+            // "Setting the duration is not supported while the system is playing."
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
             var main = ps.main;
             main.duration = 1f;
             main.loop = false;

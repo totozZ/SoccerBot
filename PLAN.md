@@ -12,7 +12,8 @@
 - [x] **P6.5** 视觉打磨：程序化足球场 / URP 后处理 Volume / Outcome 粒子特效 / 4 角 SpotLight / 3 静态机位（数字键 1/2/3）/ HUD 减负 + 顶部比分牌
 - [ ] **P7** 演示流程状态机 FlowManager（串联启动→比赛→操作→演算→评分全流程）
 - [ ] **P7.1** IntroManager 启动画面（黑底白字 + 比赛背景简介 + BGM 淡入）
-- [ ] **P7.2** VRShootController 体感射门（手柄速度/方向追踪 → 射门/传球判定）
+- [x] **P7.2 (PC 原型)** MatchFlowController + FPSPlayerController + PowerBarUI（一轮一传 / 长按蓄力 / 力度+随机选剧本）
+- [ ] **P7.2 (VR 完整版)** VRShootController 体感射门（手柄速度/方向追踪 → 射门/传球判定）
 - [ ] **P7.3** ReplayDirector 演算导演（根据玩家操作选分支剧本 + 慢动作回放）
 - [ ] **P7.4** AudioManager BGM 管理（背景音乐 + 音效事件触发）
 - [ ] **P8** Quest 3S APK 构建 + 手柄输入适配（代码已写，待 Android 环境）
@@ -21,7 +22,7 @@
 
 ---
 
-> 版本: v6.1.1 | 日期: 2026-05-27 | 状态: P1–P6.5 完成 + 修复轮（1/2/3 切到 InputSystem / 球场放大到 8×12m / Robot 等重摆位 / HUD 精简显示），P7 演示流程设计已明确，开发中
+> 版本: v6.3.0 | 日期: 2026-05-28 | 状态: P7.2 PC 原型完成（三角色架构：Robot 开场传球 / Player 玩家化身隐形 / Teammate 蓝色剧本 NPC；玩家 FPS + 一轮一传 + 蓄力射门 + 视角原地冻结看剧本演算），P7.1/7.3/7.4 待启动
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -109,7 +110,8 @@
 | **球发射起点跟随机器人** | ✅ 完成 | ScenarioPlayer 偏移关键帧至机器人当前位置 |
 | **XR Origin + PC 自由视角** | ✅ 完成 | PCCameraController（右键拖拽 + WASD） |
 | **P6.5 视觉打磨** | ✅ 完成 | FieldBuilder 程序化球场（绿地/条纹/边线/中圈/双球门）+ PolishVolumeBuilder（Bloom/Vignette/ColorAdj/ACES）+ OutcomeFx（金/红/灰三种粒子）+ 4 角 SpotLight + 3 静态机位（OverheadCam/SideCam/BehindRobotCam，1/2/3 数字键直切）+ HUD `_showInDemo` 开关 + ScoreBoard 顶部比分牌 |
-| **演示流程** | 🔲 P7 开发中 | FlowManager 状态机 + Intro 启动画面 + VR 体感射门 + 演算导演 + BGM |
+| **P7.2 PC 原型** | ✅ 完成（v6.3 重构） | **三角色架构**：Robot（黄色海绵宝宝，`(0,0,-6)`，开场传球 NPC）/ Player（**新独立 GO**，`(0,0,2)` Y=180，挂 FpsAnchor+FpsCamera+FPSPlayerController，**隐形**，玩家化身）/ Teammate（蓝色，剧本驱动 NPC，仅 Shot 阶段 SetActive）。FPSPlayerController 加 `MovementEnabled` 门控（仅 Possession 开）。MatchFlowController 拆出 `_playerTransform`/`_teammateTransform`，HandlePlayerShot 改为 detach FpsCamera 冻结视角 + ScenarioPlayer.SetOrigin(Player) + 玩家 yaw 决定射门方向。ScenarioPlayer.cs 加 SetOrigin(Transform) API + posOffset Y 强制 0（修球陷地）。PowerBarUI / 力度阈值 / 一轮一传循环全保留 |
+| **演示流程其余项** | 🔲 P7.1/P7.3/P7.4 待启动 | Intro 启动画面 + ReplayDirector 演算导演 + AudioManager BGM + VR 体感射门完整版 |
 | **Quest 3S 部署** | ⚠️ 代码就绪 | BuildAndroid.cs + 手柄 Trigge 输入已写；Android 环境待网络安装 |
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
@@ -186,7 +188,52 @@
 
 ---
 
-## 剧本系统设计
+## P7.2 PC 原型架构（v6.3 重构后）
+
+### 三角色责任表
+
+| 角色 | GameObject | 控制者 | 何时可见 | 何时移动 |
+|---|---|---|---|---|
+| **Robot** | `Robot` | 静态 / FakeData | 全程 | 开局抛球时挥臂 |
+| **Player** | `Player`（独立 GO，无 mesh） | FPSPlayerController（WASD+鼠标） | 全程隐形 | 仅 Possession 阶段 |
+| **Teammate** | `Teammate`（CharacterBuilder 蓝色） | ScenarioPlayer 关键帧 | 仅 Shot 阶段 SetActive | 剧本驱动 |
+
+### 一轮玩法循环（MatchFlowController）
+
+```
+[Setup 1.5s]   球 attach Robot；Player MovementEnabled=false；Teammate hidden
+   ↓
+[Pass 1.0s]    球抛物线 Robot → Player 脚边（Coroutine lerp + 抛物线 Y）
+   ↓
+[Possession]   球 attach Player；MovementEnabled=true、ShootingEnabled=true
+   ↓ (松开 LMB)
+[Shot]         FpsCamera SetParent(null) 视角原地冻结
+               ScenarioPlayer.SetOrigin(Player.transform)
+               Teammate SetActive(true) → 剧本以 Player.position + yaw 为原点播放
+               力度路由 ForcePlay(idx)：≥0.7 进球 / 0.4-0.7 射偏 / <0.4 拦截
+   ↓
+[Score]        FpsCamera reparent 回 Player/FpsAnchor；ScorePanel 弹窗
+   ↓ 3s
+[Cooldown]     Teammate SetActive(false) → 回 Setup
+```
+
+### 关键脚本清单
+
+| 文件 | 职责 |
+|---|---|
+| [FPSPlayerController.cs](unity/Assets/Scripts/Player/FPSPlayerController.cs) | 玩家输入：WASD（受 MovementEnabled 门控）、鼠标右键 look、LMB 蓄力、`OnShoot(power, direction)` 事件 |
+| [PowerBarUI.cs](unity/Assets/Scripts/UI/PowerBarUI.cs) | 屏幕底部力度条，绿→黄→红渐变，订阅 OnChargeChanged |
+| [MatchFlowController.cs](unity/Assets/Scripts/Flow/MatchFlowController.cs) | 一轮循环主控；AutoResolveRefs 强制按名称解析 Player / Teammate / FpsCamera |
+| [ScenarioPlayer.cs](unity/Assets/Scripts/Scenario/ScenarioPlayer.cs) | 剧本关键帧插值 + 慢动作；`SetOrigin(Transform)` API 让 MatchFlow 把原点切到 Player；posOffset Y 强制 0 防球陷地 |
+| [BallController.cs](unity/Assets/Scripts/Ball/BallController.cs) | `AttachTo(parent, localOffset)` / `Detach()` 用于持球切换 |
+
+### 修过的三个 bug（v6.3）
+
+1. **视角飞走** → Player 拆成独立 GO 后 FpsCamera 不再是 Teammate 子物体；Shot 阶段 SetParent(null) 进一步保证相机原地冻结
+2. **球陷地下** → ScenarioPlayer 算 `posOffset` 时 Y 强制 0，球关键帧（Y 0.3-0.9）原样保留地面相对高度
+3. **方向不对球门** → 改用 Player.transform.rotation（已经等于相机 yaw）作为剧本旋转，玩家瞄哪儿球飞哪儿
+
+---
 
 每个剧本是一个 ScriptableObject，包含一串关键帧：
 
@@ -348,7 +395,11 @@ SoccerBot/
     │       ├── UI/                        # ✅ 已完成
     │       │   ├── StatusPanel.cs
     │       │   ├── ScorePanel.cs
+    │       │   ├── ScoreBoard.cs
+    │       │   ├── PowerBarUI.cs          # ✅ P7.2 力度条
     │       │   └── IntroPanel.cs          # 🔲 P7.1 待写：启动画面
+    │       ├── Player/                    # ✅ P7.2 新增
+    │       │   └── FPSPlayerController.cs
     │       ├── Camera/                    # ✅ 已完成
     │       │   ├── SmoothFollow.cs
     │       │   ├── CameraSwitcher.cs
@@ -357,17 +408,18 @@ SoccerBot/
     │       │   └── FakeDataGenerator.cs
     │       ├── Scenario/                  # ✅ 已完成
     │       │   ├── Scenario.cs
-    │       │   ├── ScenarioPlayer.cs
+    │       │   ├── ScenarioPlayer.cs      # P7.2 加 SetOrigin(Transform) + posOffset Y=0
     │       │   ├── ScenarioTrigger.cs
     │       │   └── ScenarioFactory.cs
     │       ├── XR/                        # ✅ 已完成
     │       │   └── XRSetup.cs
-    │       ├── Flow/                      # 🔲 P7 待写：演示流程
-    │       │   ├── FlowManager.cs         # 状态机主控
-    │       │   ├── IntroManager.cs        # 启动画面
-    │       │   ├── VRShootController.cs   # 体感射门
-    │       │   ├── ReplayDirector.cs      # 演算导演
-    │       │   └── AudioManager.cs        # BGM + 音效
+    │       ├── Flow/                      # ✅ P7.2 PC 原型已就位
+    │       │   ├── MatchFlowController.cs # ✅ 一轮循环主控
+    │       │   ├── FlowManager.cs         # 🔲 P7 待写：总状态机
+    │       │   ├── IntroManager.cs        # 🔲 P7.1 待写：启动画面
+    │       │   ├── VRShootController.cs   # 🔲 P7.2 VR 完整版
+    │       │   ├── ReplayDirector.cs      # 🔲 P7.3 演算导演
+    │       │   └── AudioManager.cs        # 🔲 P7.4 BGM + 音效
     │       └── Editor/                    # ✅ 已完成
     │           ├── BuildAndroid.cs
     │           └── ScenarioFactory.cs
@@ -382,16 +434,16 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1–P6.5 已完成**：场景优化完毕，剧本 + 评分 + PC 自由视角 + 视觉打磨（球场/后处理/特效/灯光/多机位/HUD）全跑通。
+**P1–P6.5 + P7.2 PC 原型** 已完成：场景重构成 Robot / Player / Teammate 三角色架构，玩家循环（Setup → Pass → Possession → Shot → Score）跑通，蓄力射门 + 力度选剧本 + 视角原地冻结观看剧本演算。
 
-**P7 演示流程** 是当前主战场，不依赖 Android：
+**P7 演示流程剩余项**（不依赖 Android）：
 
 1. **P7.1 IntroManager** — 启动画面 Canvas + 文字淡入淡出（当天可完成）
-2. **P7.2 VRShootController** — 体感射门（PC 端用鼠标模拟先跑通逻辑）
-3. **P7.3 ReplayDirector** — 演算导演（对接现有 ScenarioPlayer）
-4. **P7.4 AudioManager** — BGM + 音效（准备音频素材）
+2. **P7.3 ReplayDirector** — 演算导演（剧本期间自动切镜 / 慢动作）
+3. **P7.4 AudioManager** — BGM + 音效（准备音频素材）
+4. **P7.2 (VR 完整版)** — VRShootController 体感射门，等 Quest 联调时做
 
-**PC 端优先策略**：所有 P7 逻辑先在 PC 上用键盘/鼠标模拟跑通，Quest 手柄适配是最后一步。
+**PC 端优先策略**：所有 P7 逻辑先在 PC 上跑通，Quest 手柄适配是最后一步。
 
 **P8（APK 构建）** 继续阻塞：Android SDK 待网络安装。
 **P9（性能优化）** 可穿插进行，不阻塞 P7。

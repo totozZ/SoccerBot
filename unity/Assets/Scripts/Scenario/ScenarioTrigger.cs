@@ -22,6 +22,8 @@ namespace SoccerBot
         [SerializeField] private SelectionMode _mode = SelectionMode.Random;
         [Tooltip("If true, ignores OnShotFired while a scenario is already playing.")]
         [SerializeField] private bool _suppressDuringPlayback = true;
+        [Tooltip("Editor-only: allow 1/2/3/Space to force scenarios. Off when MatchFlowController owns the loop.")]
+        [SerializeField] private bool _allowKeyboardOverride = false;
 
         private int _seqIndex;
         private InputAction _triggerAction;
@@ -73,7 +75,9 @@ namespace SoccerBot
             var kb = Keyboard.current;
 
             // Keyboard: 1/2/3 = force scenario, Space = next (Editor debug).
-            if (kb != null)
+            // Disabled by default so MatchFlowController can own scenario routing
+            // and CameraSwitcher can use 1/2/3/4 for camera selection.
+            if (_allowKeyboardOverride && kb != null)
             {
                 if (kb.digit1Key.wasPressedThisFrame) ForcePlay(0);
                 else if (kb.digit2Key.wasPressedThisFrame) ForcePlay(1);

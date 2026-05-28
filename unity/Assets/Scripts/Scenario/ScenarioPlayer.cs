@@ -32,6 +32,19 @@ namespace SoccerBot
 
         public bool IsPlaying { get; private set; }
 
+        // Expose NPC refs so MatchFlowController can reposition them during Setup
+        // (GameObject.Find skips inactive root GOs, so it can't grab Opponent itself).
+        public Transform TeammateTransform => _teammateTransform;
+        public Transform OpponentTransform => _opponentTransform;
+
+        // P7.2 fix: let MatchFlowController swap the origin from Robot to Teammate
+        // before playing a scenario, so the ball starts at the player's feet and
+        // the rotation aligns with the goal direction (Teammate is pre-rotated to face the goal).
+        public void SetOrigin(Transform t)
+        {
+            _robotTransform = t;
+        }
+
         public void Play(Scenario scenario)
         {
             if (scenario == null)
@@ -53,18 +66,20 @@ namespace SoccerBot
             Debug.Log($"[ScenarioPlayer] Playing: {s.scenarioName} ({s.outcome}, {s.finalScore})");
 
             if (_ballController != null) _ballController.BeginExternalControl();
-            SetActive(_teammateTransform, true);
-            SetActive(_opponentTransform, true);
 
             // P5.1: Offset all waypoints so the ball originates from the robot's
             // current world position instead of the design-time (0, 0.5, -1.5).
+            // P7.2 fix: Y offset must be zero — the ball keyframes already encode
+            // ground-relative heights (0.3-0.9). Subtracting designOrigin.y (0.5)
+            // would push the ball below ground (e.g. last keyframe Y=0.3 → -0.2).
             Vector3 posOffset = Vector3.zero;
             Quaternion rotOffset = Quaternion.identity;
             Vector3 designOrigin = Vector3.zero;
             if (_robotTransform != null && s.ballPath != null && s.ballPath.Length > 0)
             {
                 designOrigin = s.ballPath[0].position;
-                posOffset = _robotTransform.position - designOrigin;
+                Vector3 origin = _robotTransform.position;
+                posOffset = new Vector3(origin.x - designOrigin.x, 0f, origin.z - designOrigin.z);
                 rotOffset = Quaternion.Euler(0f, _robotTransform.eulerAngles.y, 0f);
             }
 
@@ -78,8 +93,12 @@ namespace SoccerBot
             float slowMoBoundary = Mathf.Max(0f, s.duration - 1f);
             bool slowMoApplied = false;
 
-            // Snap to t=0 so there's no visible jump on first frame.
+            // Snap to t=0 so there's no visible jump on first frame, THEN reveal NPCs.
+            // This makes them appear cleanly at their start positions instead of
+            // teleporting from a stale scene-default location.
             ApplySample(ballPath, teammatePath, opponentPath, 0f);
+            SetActive(_teammateTransform, true);
+            SetActive(_opponentTransform, true);
 
             while (elapsed < s.duration)
             {
@@ -99,6 +118,11 @@ namespace SoccerBot
 
             if (slowMoApplied) Time.timeScale = 1f;
             if (_ballController != null) _ballController.EndExternalControl();
+
+            // Clear the stage — NPCs disappear after the scenario ends so the
+            // pre-scenario tableau is just the robot standing alone.
+            SetActive(_teammateTransform, false);
+            SetActive(_opponentTransform, false);
 
             IsPlaying = false;
             OnScenarioComplete?.Invoke(s);

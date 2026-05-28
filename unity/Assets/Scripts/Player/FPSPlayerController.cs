@@ -1,0 +1,195 @@
+// FPSPlayerController.cs — First-person controller for the player (the Teammate).
+// Drives the FPS camera and emits OnChargeChanged / OnShoot events that the
+// MatchFlowController and PowerBarUI consume.
+//
+// Inputs (New Input System, matches PCCameraController style):
+//   WASD          — strafe / forward, ground-locked
+//   Mouse RMB     — hold + drag to look around
+//   Mouse LMB     — hold to charge a shot, release to fire
+//   Esc           — release any active charge (safety)
+//
+// Attach this to the Teammate GameObject. Wire _cameraAnchor to a child
+// transform at eye height (e.g. y=1.6). The FPS camera should be a child
+// of the anchor; the controller rotates the anchor for yaw and the camera
+// for pitch.
+
+using System;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+namespace SoccerBot
+{
+    public class FPSPlayerController : MonoBehaviour
+    {
+        [Header("References")]
+        [SerializeField] private Transform _cameraAnchor;
+        [SerializeField] private Camera _fpsCamera;
+
+        [Header("Movement")]
+        [SerializeField] private float _moveSpeed = 4f;
+        [SerializeField] private float _lookSensitivity = 1.5f;
+        [SerializeField] private float _minPitch = -70f;
+        [SerializeField] private float _maxPitch = 70f;
+
+        [Header("Charge")]
+        [Tooltip("Seconds of holding LMB to reach full power (1.0).")]
+        [SerializeField] private float _maxChargeTime = 1.5f;
+
+        [Header("Aim Feedback (optional)")]
+        [SerializeField] private float _chargeRecoilOffset = 0.08f;
+
+        public event Action<float> OnChargeChanged;          // 0..1 each frame while charging
+        public event Action<float, Vector3> OnShoot;          // (power01, worldDirection)
+        public event Action OnChargeBegin;
+        public event Action OnChargeCancel;
+
+        public bool IsCharging => _charging;
+        public float CurrentPower01 => _charging ? Mathf.Clamp01(_chargeTime / _maxChargeTime) : 0f;
+        public bool ShootingEnabled { get; set; } = false;   // gated by MatchFlowController
+        public bool MovementEnabled { get; set; } = false;   // gated by MatchFlowController (only true during Possession)
+
+        private float _yaw;
+        private float _pitch;
+        private bool  _charging;
+        private float _chargeTime;
+        private Vector3 _cameraRestLocalPos;
+
+        void Start()
+        {
+            // Auto-resolve children if not wired in Inspector. Convention:
+            //   <self>/FpsAnchor          ← _cameraAnchor
+            //   <self>/FpsAnchor/FpsCamera ← _fpsCamera
+            if (_cameraAnchor == null)
+            {
+                var t = transform.Find("FpsAnchor");
+                if (t != null) _cameraAnchor = t;
+            }
+            if (_cameraAnchor == null) _cameraAnchor = transform;
+            if (_fpsCamera == null && _cameraAnchor != null)
+                _fpsCamera = _cameraAnchor.GetComponentInChildren<Camera>(true);
+
+            // Make sure the FPS camera is enabled — it may have been disabled
+            // by CameraSwitcher earlier in scene-build wizardry.
+            if (_fpsCamera != null) _fpsCamera.enabled = true;
+
+            _yaw   = transform.eulerAngles.y;
+            _pitch = 0f;
+            if (_fpsCamera != null) _cameraRestLocalPos = _fpsCamera.transform.localPosition;
+        }
+
+        void Update()
+        {
+            var kb = Keyboard.current;
+            var mouse = Mouse.current;
+            if (kb == null) return;
+
+            HandleLook(mouse);
+            HandleMove(kb);
+            HandleCharge(mouse, kb);
+            ApplyChargeRecoil();
+        }
+
+        // ── Look ─────────────────────────────────────────────
+
+        private void HandleLook(Mouse mouse)
+        {
+            if (mouse == null || !mouse.rightButton.isPressed) return;
+            Vector2 delta = mouse.delta.ReadValue();
+            _yaw   += delta.x * _lookSensitivity * 0.1f;
+            _pitch -= delta.y * _lookSensitivity * 0.1f;
+            _pitch  = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
+
+            transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+            if (_cameraAnchor != null)
+                _cameraAnchor.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+        }
+
+        // ── Move ─────────────────────────────────────────────
+
+        private void HandleMove(Keyboard kb)
+        {
+            if (!MovementEnabled) return;
+
+            float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
+            float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
+            if (x == 0f && z == 0f) return;
+
+            Vector3 fwd = transform.forward; fwd.y = 0f; fwd.Normalize();
+            Vector3 right = transform.right;  right.y = 0f; right.Normalize();
+            Vector3 move = (right * x + fwd * z).normalized * _moveSpeed * Time.deltaTime;
+            transform.position += move;
+        }
+
+        // ── Charge & Shoot ───────────────────────────────────
+
+        private void HandleCharge(Mouse mouse, Keyboard kb)
+        {
+            if (mouse == null) return;
+
+            // Cancel charge if disabled mid-way (e.g. scenario starts)
+            if (!ShootingEnabled && _charging)
+            {
+                CancelCharge();
+                return;
+            }
+            if (kb.escapeKey.wasPressedThisFrame && _charging)
+            {
+                CancelCharge();
+                return;
+            }
+
+            if (!ShootingEnabled) return;
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                _charging = true;
+                _chargeTime = 0f;
+                OnChargeBegin?.Invoke();
+                OnChargeChanged?.Invoke(0f);
+                return;
+            }
+
+            if (_charging)
+            {
+                _chargeTime += Time.deltaTime;
+                float power = Mathf.Clamp01(_chargeTime / _maxChargeTime);
+                OnChargeChanged?.Invoke(power);
+
+                if (mouse.leftButton.wasReleasedThisFrame)
+                {
+                    Vector3 dir = _fpsCamera != null
+                        ? _fpsCamera.transform.forward
+                        : transform.forward;
+                    dir.Normalize();
+                    _charging = false;
+                    OnShoot?.Invoke(power, dir);
+                    OnChargeChanged?.Invoke(0f);
+                }
+            }
+        }
+
+        private void CancelCharge()
+        {
+            _charging = false;
+            _chargeTime = 0f;
+            OnChargeChanged?.Invoke(0f);
+            OnChargeCancel?.Invoke();
+        }
+
+        // ── Subtle camera recoil while charging ──────────────
+
+        private void ApplyChargeRecoil()
+        {
+            if (_fpsCamera == null) return;
+            // Skip while detached during scenario playback — without a parent,
+            // localPosition == position, so Lerping it pulls the camera in world
+            // space toward origin (visible as a forward drift after the shot).
+            if (_fpsCamera.transform.parent == null) return;
+            float p = CurrentPower01;
+            // Pull the camera back slightly as power builds — gives weight to the windup.
+            Vector3 target = _cameraRestLocalPos + new Vector3(0f, 0f, -p * _chargeRecoilOffset);
+            _fpsCamera.transform.localPosition = Vector3.Lerp(
+                _fpsCamera.transform.localPosition, target, Time.deltaTime * 8f);
+        }
+    }
+}

@@ -15,14 +15,16 @@ namespace SoccerBot
         [Tooltip("Cameras in order of cycling. First one is default.")]
         [SerializeField] private List<Camera> _cameras = new List<Camera>();
 
-        [Header("Direct-Select Cameras (1/2/3)")]
-        [Tooltip("Camera names bound to keys Digit1/2/3. Resolved at Start if not assigned.")]
+        [Header("Direct-Select Cameras (1/2/3/4)")]
+        [Tooltip("Camera names bound to keys Digit1-4. Resolved at Start if not assigned.")]
         [SerializeField] private string _key1Name = "OverheadCam";
         [SerializeField] private string _key2Name = "SideCam";
         [SerializeField] private string _key3Name = "BehindRobotCam";
+        [SerializeField] private string _key4Name = "FpsCamera";
         [SerializeField] private Camera _key1Camera;
         [SerializeField] private Camera _key2Camera;
         [SerializeField] private Camera _key3Camera;
+        [SerializeField] private Camera _key4Camera;
 
         private int _currentIndex = 0;
 
@@ -38,6 +40,7 @@ namespace SoccerBot
             if (_key1Camera == null) _key1Camera = FindByName(_key1Name);
             if (_key2Camera == null) _key2Camera = FindByName(_key2Name);
             if (_key3Camera == null) _key3Camera = FindByName(_key3Name);
+            if (_key4Camera == null) _key4Camera = FindByName(_key4Name);
 
             // Enable only the first camera
             for (int i = 0; i < _cameras.Count; i++)
@@ -72,10 +75,11 @@ namespace SoccerBot
 
             if (kb.cKey.wasPressedThisFrame) SwitchCamera();
 
-            // Direct-select via 1 / 2 / 3
+            // Direct-select via 1 / 2 / 3 / 4
             if (kb.digit1Key.wasPressedThisFrame) SwitchToCamera(_key1Camera);
             if (kb.digit2Key.wasPressedThisFrame) SwitchToCamera(_key2Camera);
             if (kb.digit3Key.wasPressedThisFrame) SwitchToCamera(_key3Camera);
+            if (kb.digit4Key.wasPressedThisFrame) SwitchToCamera(_key4Camera);
         }
 
         private void SwitchToCamera(Camera target)
