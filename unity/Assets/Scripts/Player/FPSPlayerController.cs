@@ -136,6 +136,13 @@ namespace SoccerBot
             _pitch -= delta.y * _lookSensitivity * 0.1f;
             _pitch  = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
 
+            // Camera detached during Shot/Score — rotate it directly in world space.
+            if (_fpsCamera != null && _fpsCamera.transform.parent == null)
+            {
+                _fpsCamera.transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+                return;
+            }
+
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (_cameraAnchor != null)
                 _cameraAnchor.localRotation = Quaternion.Euler(_pitch, 0f, 0f);

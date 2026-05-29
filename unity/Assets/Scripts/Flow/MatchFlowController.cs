@@ -55,7 +55,7 @@ namespace SoccerBot
         [SerializeField] private float _cooldownDuration = 3.0f;
 
         [Header("Power Routing")]
-        [Tooltip("Index 0 in ScenarioTrigger's list (ScoreSuccess) when power >= this.")]
+        [Tooltip("Index 0 in ScenarioTrigger's list (Intercepted) when power < _missThreshold.")]
         [SerializeField, Range(0.5f, 1f)] private float _scoreThreshold = 0.7f;
         [Tooltip("Index 2 (ShotMissed) when power >= this; otherwise index 1 (Intercepted).")]
         [SerializeField, Range(0.1f, 0.7f)] private float _missThreshold = 0.4f;
@@ -325,7 +325,7 @@ namespace SoccerBot
             {
                 Debug.Log($"[MatchFlow] Shot power={power01:F2} (eff={effectivePower:F2}) → INTERCEPTED (scenario)");
                 if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
-                if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(1);
+                if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(0);
             }
         }
 
