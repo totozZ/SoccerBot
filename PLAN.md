@@ -22,7 +22,7 @@
 
 ---
 
-> 版本: v6.5.0 | 日期: 2026-05-29 | 状态: P7.1 IntroManager + P7.3 ReplayDirector + P7.4 AudioManager 脚本完成，待 Unity 场景挂载；P7.2 VR 完整版手柄绑定为下一步
+> 版本: v6.6.0 | 日期: 2026-05-29 | 状态: 演示脚本(Intro/Replay/Audio)已挂载场景(commit fa466f4)；本次会话修角色身高 0.33→0.66 + 力度条重复块/尺寸，诊断出 BGM 两份 AudioManager + intro 被顶掉时序 bug（待修）；P7.2 VR 手柄绑定仍为主线下一步
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -111,7 +111,7 @@
 | **XR Origin + PC 自由视角** | ✅ 完成 | PCCameraController（右键拖拽 + WASD） |
 | **P6.5 视觉打磨** | ✅ 完成 | FieldBuilder 程序化球场（绿地/条纹/边线/中圈/双球门）+ PolishVolumeBuilder（Bloom/Vignette/ColorAdj/ACES）+ OutcomeFx（金/红/灰三种粒子）+ 4 角 SpotLight + 3 静态机位（OverheadCam/SideCam/BehindRobotCam，1/2/3 数字键直切）+ HUD `_showInDemo` 开关 + ScoreBoard 顶部比分牌 |
 | **P7.2 PC 原型** | ✅ 完成（v6.3 重构） | **三角色架构**：Robot（黄色海绵宝宝，`(0,0,-6)`，开场传球 NPC）/ Player（**新独立 GO**，`(0,0,2)` Y=180，挂 FpsAnchor+FpsCamera+FPSPlayerController，**隐形**，玩家化身）/ Teammate（蓝色，剧本驱动 NPC，仅 Shot 阶段 SetActive）。FPSPlayerController 加 `MovementEnabled` 门控（仅 Possession 开）。MatchFlowController 拆出 `_playerTransform`/`_teammateTransform`，HandlePlayerShot 改为 detach FpsCamera 冻结视角 + ScenarioPlayer.SetOrigin(Player) + 玩家 yaw 决定射门方向。ScenarioPlayer.cs 加 SetOrigin(Transform) API + posOffset Y 强制 0（修球陷地）。PowerBarUI / 力度阈值 / 一轮一传循环全保留 |
-| **演示流程其余项** | ✅ 脚本完成，待挂载 | IntroManager + IntroPanel（P7.1）+ ReplayDirector（P7.3）+ AudioManager（P7.4）脚本已写，未提交，需在 Unity 场景中挂载组件 |
+| **演示流程其余项** | ✅ 脚本完成 + 已挂载 | IntroManager + IntroPanel（P7.1）+ ReplayDirector（P7.3）+ AudioManager（P7.4）已挂入 Main.unity（commit fa466f4：美术资源替换 + BGM + Opponent 模型 + HUD 强制 active）。⚠️ 已知 bug：场景里有**两份 AudioManager**（GameManager GO + AudioManager GO，BGM 槽多为空）；intro BGM 被 match 顶掉（IntroManager 用 `enabled=false` 停不掉已启动的 MatchLoop 协程，Setup 阶段立即切 match） |
 | **Quest 3S 部署** | ✅ APK 跑通 | sideload 后 VR 内能看到球场 / Robot / 剧本演算；A 键已可触发射门（fallback 路径，需正式绑定）|
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
@@ -434,14 +434,13 @@ SoccerBot/
 
 ## 立即下一步
 
-**P1–P7.4 脚本全部完成**：IntroManager / IntroPanel / ReplayDirector / AudioManager 四个脚本今天新写，未提交，需在 Unity 场景挂载。
+**演示脚本已挂入场景**（commit fa466f4）。本次会话做了 UI/美术微调，并定位出两个待修问题。未提交改动：Main.unity（角色身高 0.66 + 力度条修复）、ArtUpgradeHelper.cs（Opponent→normal woman c + 0.66 缩放 + 不再激活重复 PowerBar）。
 
-**立即下一步：在 Unity 场景挂载新脚本**
+**立即下一步：修两个已诊断的 bug（约 10 分钟代码量）**
 
-1. 创建全屏黑色 Canvas → 挂 `IntroPanel`，加 3 个 TMP 文字子物体
-2. 在 `MatchFlowController` 同 GO 上挂 `IntroManager`，填写三行文案
-3. 任意 GO 挂 `ReplayDirector`（自动找 CameraSwitcher）
-4. 任意 GO 挂 `AudioManager`，Inspector 里拖入 BGM/SFX 音频素材
+1. **删重复 AudioManager**：场景里 GameManager 和 AudioManager 两个 GO 各挂了一份 AudioManager，删 GameManager 上那份，保留 AudioManager GO，并把 intro/match/replay 三个 BGM 槽填齐（或在 AudioManagerWirer.cs 补全路径后跑菜单）。
+2. **修 intro 被顶掉**：IntroManager 的 `_matchFlow.enabled=false` 停不掉已启动的 MatchLoop 协程 → AudioManager 给个「intro 结束前不响应阶段切换」的门控开关，IntroManager 在 StartMatch() 打开。
+3. 换 Opponent 模型：改完 ArtUpgradeHelper.cs 后**必须**跑菜单 `SoccerBot/Art Upgrade/Replace Characters` 再存场景，光改代码不动场景。
 
 **P7.2 VR 完整版**（脚本已有多源绑定，Quest A/Trigger 已接入）：在 Quest 上测试手柄蓄力射门是否稳定，确认头显朝向作为射门方向是否正确。
 

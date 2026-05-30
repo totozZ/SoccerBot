@@ -50,6 +50,37 @@ namespace SoccerBot
                 pc.enabled = true;
                 Debug.Log("[XRSetup] PC free-fly on (right-drag look, WASD move). Disable via Inspector if using headset.");
             }
+
+            EnableHeadTrackingOnRenderCamera();
+        }
+
+        // The camera that actually renders is Player/FpsAnchor/FpsCamera (the XR Camera
+        // under XR Origin has its Camera component disabled). That render camera has no
+        // TrackedPoseDriver, so on Quest the headset rotation never reaches the view and
+        // the picture stays frozen. Attach a rotation-only TrackedPoseDriver here so head
+        // turns drive the view in VR, while leaving position fixed at the player's eye
+        // height (so the shot/camera-detach flow is undisturbed).
+        //
+        // On PC (no HMD) trackingState reports "not tracked", so the driver writes nothing
+        // and FPSPlayerController's mouse-look keeps working — no regression.
+        private void EnableHeadTrackingOnRenderCamera()
+        {
+            var playerGO = GameObject.Find("Player");
+            if (playerGO == null) return;
+
+            var fpsCameraT = playerGO.transform.Find("FpsAnchor/FpsCamera");
+            if (fpsCameraT == null) return;
+
+            if (fpsCameraT.GetComponent<TrackedPoseDriver>() != null) return;   // already tracked
+
+            var driver = fpsCameraT.gameObject.AddComponent<TrackedPoseDriver>();
+            driver.trackingType = TrackedPoseDriver.TrackingType.RotationOnly;  // keep eye height fixed
+            driver.rotationInput = new InputActionProperty(
+                new InputAction("Rotation", binding: "<XRHMD>/centerEyeRotation"));
+            driver.trackingStateInput = new InputActionProperty(
+                new InputAction("TrackingState", binding: "<XRHMD>/trackingState"));
+
+            Debug.Log("[XRSetup] Head tracking (rotation-only) attached to render camera 'FpsCamera'.");
         }
 
 #if UNITY_EDITOR

@@ -125,7 +125,7 @@ SoccerBot/
 
 详见 [PLAN.md](PLAN.md)。
 
-**当前状态（2026-05-28）**：v6.4 — P1–P6.5 + P7.2 PC 原型 + 视觉打磨 4 项（Robot 不飞冲 / 视角 1.3m / 射后视角不漂 / NPC Setup 站位）+ P8 Quest 3S APK sideload 部署成功，VR 内可看到球场 / Robot 抛球 / 剧本演算。下一步 P7.2 VR 完整版手柄绑定。
+**当前状态（2026-05-29）**：v6.6 — P1–P8 完成（PC 原型 + 视觉打磨 + Quest 3S APK 部署）+ 演示脚本 Intro/Replay/Audio 已挂入场景。本次微调角色身高与力度条 UI，并定位出两个待修 bug（场景重复 AudioManager / intro BGM 被 match 顶掉）。下一步：修这两个 bug + P7.2 VR 完整版手柄绑定。
 
 ---
 

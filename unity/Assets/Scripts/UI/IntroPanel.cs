@@ -29,13 +29,14 @@ namespace SoccerBot
         {
             if (_canvasGroup == null) _canvasGroup = GetComponent<CanvasGroup>();
             SetAlpha(0f);
-            gameObject.SetActive(false);
+            // Do NOT SetActive(false) here — IntroManager.Start() calls Show() immediately,
+            // and a Coroutine cannot start on an inactive GameObject.
         }
 
         public void Show(string line1, string line2, string line3)
         {
             if (_routine != null) StopCoroutine(_routine);
-            gameObject.SetActive(true);
+            gameObject.SetActive(true);   // must be active before StartCoroutine
             _routine = StartCoroutine(RunIntro(line1, line2, line3));
         }
 

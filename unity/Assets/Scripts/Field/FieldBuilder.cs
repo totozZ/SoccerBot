@@ -38,6 +38,10 @@ namespace SoccerBot
         [SerializeField] private float _goalDepth     = 1.0f;
         [SerializeField] private float _postThickness = 0.12f;
 
+        [Header("Grass Material (optional)")]
+        [Tooltip("有就用这个材质（保留贴图），没有就退回纯色 _grassColor。")]
+        [SerializeField] private Material _grassMaterial;
+
         void Awake() => Build();
 
         public void Build()
@@ -68,7 +72,8 @@ namespace SoccerBot
             grass.transform.localPosition = new Vector3(0f, -thickness * 0.5f, 0f);
             grass.transform.localScale = new Vector3(_halfWidth * 2f, thickness, _halfLength * 2f);
             var r = grass.GetComponent<Renderer>();
-            if (r != null) r.material.color = _grassColor;
+            if (_grassMaterial != null) r.sharedMaterial = _grassMaterial;   // keep texture, survives Play
+            else if (r != null) r.material.color = _grassColor;
             // Keep the collider — ground physics
             grass.isStatic = true;
         }

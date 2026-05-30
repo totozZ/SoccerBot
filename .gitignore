@@ -6,8 +6,12 @@ unity/Build/
 unity/Builds/
 unity/Logs/
 unity/UserSettings/
+unity/.utmp/
 unity/*.apk
 unity/*.aab
+
+# Build output (APK / AAB)
+/build/
 
 # Visual Studio / VS Code
 *.sln

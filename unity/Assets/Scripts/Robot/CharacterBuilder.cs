@@ -20,8 +20,13 @@ namespace SoccerBot
         public Transform topFlywheel;
         public Transform bottomFlywheel;
 
+        [Header("Build")]
+        [Tooltip("Robot=true (生成海绵宝宝). Teammate/Opponent=false (用导入的人物模型，不生成 primitive).")]
+        [SerializeField] private bool _buildOnAwake = true;
+
         void Awake()
         {
+            if (!_buildOnAwake) return;
             BuildSpongeBot();
             WireToRobotVisuals();
         }

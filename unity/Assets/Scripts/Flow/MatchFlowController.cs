@@ -79,6 +79,9 @@ namespace SoccerBot
         [SerializeField] private float _teammateRunFraction = 0.3f;     // dash completes within this fraction of _shotFlightTime
         [SerializeField] private float _resultHoldDelay = 0.3f;         // pause after ball hits target before showing ScorePanel
 
+        [Header("Whistle")]
+        [SerializeField] private AudioSource _whistleSource;
+
         [Header("Score Display Data (wire 2 .asset files)")]
         [Tooltip("Wire ScoreSuccess.asset — used as data carrier for ScorePanel when player scores.")]
         [SerializeField] private Scenario _scoreSuccessData;
@@ -173,6 +176,18 @@ namespace SoccerBot
             if (_scorePanel == null) _scorePanel = FindFirstObjectByType<ScorePanel>();
         }
 
+        private void PlayWhistle()
+        {
+            if (_whistleSource == null)
+            {
+                _whistleSource = gameObject.AddComponent<AudioSource>();
+                _whistleSource.playOnAwake = false;
+                _whistleSource.spatialBlend = 0f;
+            }
+            var clip = WhistleGenerator.Create();
+            _whistleSource.PlayOneShot(clip, 0.8f);
+        }
+
         void OnDestroy()
         {
             if (_player != null) _player.OnShoot -= HandlePlayerShot;
@@ -224,6 +239,10 @@ namespace SoccerBot
         private IEnumerator DoPass()
         {
             CurrentPhase = Phase.Pass;
+
+            // Play whistle at the start of each pass
+            PlayWhistle();
+
             if (_ball == null || _robotTransform == null || _playerTransform == null)
             {
                 yield return null;
