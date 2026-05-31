@@ -25,8 +25,8 @@ namespace SoccerBot
         [SerializeField] private TMP_Text _flavorText;
 
         [Header("Timing")]
-        [SerializeField] private float _fadeDuration = 0.3f;
-        [SerializeField] private float _holdDuration = 3f;
+        [SerializeField] private float _fadeDuration = 0.5f;
+        [SerializeField] private float _holdDuration = 4.5f;
 
         [Header("Outcome Colors")]
         [SerializeField] private Color _scoreColor       = new Color(0.2f, 0.9f, 0.3f);
@@ -64,9 +64,23 @@ namespace SoccerBot
             ApplyColor(_scoreText, c);
             ApplyColor(_outcomeText, c);
 
-            yield return Fade(0f, 1f, _fadeDuration);
+            // Pop-in: fade + scale from 0.8 → 1.0
+            transform.localScale = Vector3.one * 0.8f;
+            float t = 0f;
+            while (t < _fadeDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                float p = Mathf.Clamp01(t / _fadeDuration);
+                if (_canvasGroup != null) _canvasGroup.alpha = p;
+                transform.localScale = Vector3.one * Mathf.Lerp(0.8f, 1f, p);
+                yield return null;
+            }
+            if (_canvasGroup != null) _canvasGroup.alpha = 1f;
+            transform.localScale = Vector3.one;
+
             yield return new WaitForSecondsRealtime(_holdDuration);
             yield return Fade(1f, 0f, _fadeDuration);
+            transform.localScale = Vector3.one;
         }
 
         private IEnumerator Fade(float from, float to, float duration)

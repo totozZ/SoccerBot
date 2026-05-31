@@ -14,8 +14,8 @@ namespace SoccerBot
 
         [Header("Scenario Text (edit per demo)")]
         [SerializeField] private string _line1 = "2014 FIFA World Cup Final";
-        [SerializeField] private string _line2 = "Extra Time · 113th Minute";
-        [SerializeField] private string _line3 = "Germany 0 – 0 Argentina · Your moment";
+        [SerializeField] private string _line2 = "Extra Time · 113' · Germany 0 – 0 Argentina";
+        [SerializeField] private string _line3 = "The ball is at your feet.  Make history.";
 
         [Header("Behaviour")]
         [Tooltip("If true, skip intro and go straight to match (useful during dev).")]

@@ -17,13 +17,14 @@ namespace SoccerBot
 
         [Header("Tuning")]
         [SerializeField] private float _yOffset = 0.4f;
-        [SerializeField] private int   _scoreBurstCount       = 80;
+        [SerializeField] private int   _scoreBurstCount       = 150;
         [SerializeField] private int   _interceptedBurstCount = 40;
         [SerializeField] private int   _missedBurstCount      = 30;
 
         private ParticleSystem _scoreFx;
         private ParticleSystem _interceptedFx;
         private ParticleSystem _missedFx;
+        private Coroutine _shakeRoutine;
 
         void Awake()
         {
@@ -69,6 +70,28 @@ namespace SoccerBot
             fx.transform.position = pos;
             fx.Clear();
             fx.Play();
+
+            if (s.outcome == ScenarioOutcome.Score)
+            {
+                if (_shakeRoutine != null) StopCoroutine(_shakeRoutine);
+                _shakeRoutine = StartCoroutine(ShakeCamera(0.25f, 0.04f));
+            }
+        }
+
+        private System.Collections.IEnumerator ShakeCamera(float duration, float magnitude)
+        {
+            var cam = Camera.main;
+            if (cam == null) yield break;
+            var origin = cam.transform.localPosition;
+            float t = 0f;
+            while (t < duration)
+            {
+                t += Time.unscaledDeltaTime;
+                float fade = 1f - (t / duration);
+                cam.transform.localPosition = origin + Random.insideUnitSphere * magnitude * fade;
+                yield return null;
+            }
+            cam.transform.localPosition = origin;
         }
 
         // ── Procedural ParticleSystem builders ──────────────
@@ -79,7 +102,7 @@ namespace SoccerBot
             var ps = NewSystem("Fx_Score",
                 color: new Color(1f, 0.85f, 0.25f, 1f),
                 size: 0.18f,
-                lifetime: 1.2f,
+                lifetime: 1.8f,
                 gravity: -0.8f);
             var emission = ps.emission;
             emission.enabled = true;
@@ -91,7 +114,8 @@ namespace SoccerBot
             shape.shapeType = ParticleSystemShapeType.Sphere;
             shape.radius = 0.15f;
             var main = ps.main;
-            main.startSpeed = new ParticleSystem.MinMaxCurve(3f, 6f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(4f, 9f);
+            main.maxParticles = 300;
             return ps;
         }
 
@@ -118,9 +142,9 @@ namespace SoccerBot
 
         private ParticleSystem BuildMissedFx()
         {
-            // Pale dust puff
+            // Orange dust puff — "so close" regret
             var ps = NewSystem("Fx_Missed",
-                color: new Color(0.85f, 0.85f, 0.78f, 1f),
+                color: new Color(0.95f, 0.55f, 0.1f, 1f),
                 size: 0.25f,
                 lifetime: 1.4f,
                 gravity: 0.2f);

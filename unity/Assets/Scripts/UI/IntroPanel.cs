@@ -16,9 +16,9 @@ namespace SoccerBot
         [SerializeField] private TextMeshProUGUI _line3;   // key player / hint
 
         [Header("Timing")]
-        [SerializeField] private float _fadeInTime  = 0.6f;
-        [SerializeField] private float _lineDelay   = 0.8f;   // gap between each line appearing
-        [SerializeField] private float _holdTime    = 2.5f;   // how long all lines stay visible
+        [SerializeField] private float _fadeInTime  = 0.8f;
+        [SerializeField] private float _lineDelay   = 1.2f;   // gap between each line appearing
+        [SerializeField] private float _holdTime    = 3.5f;   // how long all lines stay visible
         [SerializeField] private float _fadeOutTime = 0.8f;
 
         public event Action OnIntroDone;

@@ -41,7 +41,7 @@ namespace SoccerBot
         [Header("Ball Offsets")]
         [SerializeField] private Vector3 _ballOffsetRobot   = new Vector3(0f, 1.0f, 0.4f);   // hands of robot
         [SerializeField] private Vector3 _ballOffsetPlayer  = new Vector3(0f, 0.3f, 0.6f);   // foot zone in front
-        [SerializeField] private float _passApex = 1.5f;                                     // peak height during pass
+        [SerializeField] private float _passApex = 2.2f;                                     // peak height during pass
 
         [Header("NPC Setup Stance (Player local-space)")]
         [Tooltip("Where Teammate stands relative to Player during Setup/Pass/Possession so they don't pop in at shot time.")]
@@ -50,8 +50,8 @@ namespace SoccerBot
         [SerializeField] private Vector3 _opponentSetupOffset = new Vector3( 1.5f, 0f, 1.5f);
 
         [Header("Timing (seconds)")]
-        [SerializeField] private float _setupDuration   = 1.5f;
-        [SerializeField] private float _passFlightTime  = 1.0f;
+        [SerializeField] private float _setupDuration   = 2.0f;
+        [SerializeField] private float _passFlightTime  = 1.6f;
         [SerializeField] private float _cooldownDuration = 3.0f;
 
         [Header("Power Routing")]
@@ -71,13 +71,13 @@ namespace SoccerBot
 
         [Header("Teammate Shot Animation")]
         [SerializeField] private float _shotPassToTeammate = 0.6f;     // ball flight time from player to teammate's foot
-        [SerializeField] private float _teammateAimDuration = 0.3f;     // teammate yaw rotation time
-        [SerializeField] private float _teammateAimHold     = 0.2f;     // hold after aiming, before kick
+        [SerializeField] private float _teammateAimDuration = 0.5f;     // teammate yaw rotation time
+        [SerializeField] private float _teammateAimHold     = 0.5f;     // hold after aiming, before kick
         [SerializeField] private float _shotFlightTime = 1.4f;          // ball flight time from teammate to goal
         [SerializeField] private float _shotApex = 2.5f;                // peak height of the kick arc
         [SerializeField] private float _teammateRunDistance = 2.0f;     // forward dash distance during the kick
         [SerializeField] private float _teammateRunFraction = 0.3f;     // dash completes within this fraction of _shotFlightTime
-        [SerializeField] private float _resultHoldDelay = 0.3f;         // pause after ball hits target before showing ScorePanel
+        [SerializeField] private float _resultHoldDelay = 0.6f;         // pause after ball hits target before showing ScorePanel
 
         [Header("Whistle")]
         [SerializeField] private AudioSource _whistleSource;

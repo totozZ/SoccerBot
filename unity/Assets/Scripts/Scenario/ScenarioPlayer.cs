@@ -26,7 +26,7 @@ namespace SoccerBot
 
         [Header("Slow Motion")]
         [SerializeField] private bool _slowMoLastSecond = true;
-        [SerializeField, Range(0.05f, 1f)] private float _slowMoScale = 0.35f;
+        [SerializeField, Range(0.05f, 1f)] private float _slowMoScale = 0.5f;
 
         public event Action<Scenario> OnScenarioComplete;
 
@@ -104,8 +104,14 @@ namespace SoccerBot
             {
                 if (_slowMoLastSecond && !slowMoApplied && elapsed >= slowMoBoundary)
                 {
-                    Time.timeScale = _slowMoScale;
+                    // Smooth transition into slow-mo instead of snapping
                     slowMoApplied = true;
+                }
+
+                if (slowMoApplied)
+                {
+                    Time.timeScale = Mathf.Lerp(Time.timeScale, _slowMoScale, Time.unscaledDeltaTime * 6f);
+                    if (Time.timeScale < _slowMoScale + 0.01f) Time.timeScale = _slowMoScale;
                 }
 
                 ApplySample(ballPath, teammatePath, opponentPath, elapsed);
@@ -116,7 +122,18 @@ namespace SoccerBot
             // Final frame at t = duration.
             ApplySample(ballPath, teammatePath, opponentPath, s.duration);
 
-            if (slowMoApplied) Time.timeScale = 1f;
+            if (slowMoApplied)
+            {
+                // Smooth recovery back to normal speed
+                float t = 0f;
+                while (t < 0.3f)
+                {
+                    t += Time.unscaledDeltaTime;
+                    Time.timeScale = Mathf.Lerp(_slowMoScale, 1f, t / 0.3f);
+                    yield return null;
+                }
+                Time.timeScale = 1f;
+            }
             if (_ballController != null) _ballController.EndExternalControl();
 
             // Clear the stage — NPCs disappear after the scenario ends so the
