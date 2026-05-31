@@ -13,6 +13,14 @@ unity/*.aab
 # Build output (APK / AAB)
 /build/
 
+# 第三方大资源包（本地保留供 Unity 使用，但不纳入 git——体积过大且可从 Asset Store 重新下载）
+unity/Assets/_Creepy_Cat/
+unity/Assets/_Creepy_Cat.meta
+unity/Assets/Gregor Quendel - Free Crowd Cheering Sounds/
+unity/Assets/Gregor Quendel - Free Crowd Cheering Sounds.meta
+unity/Assets/Saritasa/
+unity/Assets/Saritasa.meta
+
 # Visual Studio / VS Code
 *.sln
 *.csproj

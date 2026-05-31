@@ -109,9 +109,18 @@ namespace SoccerBot
             // by CameraSwitcher earlier in scene-build wizardry.
             if (_fpsCamera != null) _fpsCamera.enabled = true;
 
-            _yaw   = transform.eulerAngles.y;
-            _pitch = 0f;
-            if (_fpsCamera != null) _cameraRestLocalPos = _fpsCamera.transform.localPosition;
+            if (_fpsCamera != null)
+            {
+                var worldEuler = _fpsCamera.transform.eulerAngles;
+                _yaw   = worldEuler.y;
+                _pitch = worldEuler.x > 180f ? worldEuler.x - 360f : worldEuler.x;
+                _cameraRestLocalPos = _fpsCamera.transform.localPosition;
+            }
+            else
+            {
+                _yaw   = transform.eulerAngles.y;
+                _pitch = 0f;
+            }
         }
 
         void Update()
@@ -130,17 +139,12 @@ namespace SoccerBot
 
         private void HandleLook(Mouse mouse)
         {
-            if (mouse == null || !mouse.rightButton.isPressed) return;
-            Vector2 delta = mouse.delta.ReadValue();
-            _yaw   += delta.x * _lookSensitivity * 0.1f;
-            _pitch -= delta.y * _lookSensitivity * 0.1f;
-            _pitch  = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
-
-            // Camera detached during Shot/Score — rotate it directly in world space.
-            if (_fpsCamera != null && _fpsCamera.transform.parent == null)
+            if (mouse != null && mouse.rightButton.isPressed)
             {
-                _fpsCamera.transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
-                return;
+                Vector2 delta = mouse.delta.ReadValue();
+                _yaw   += delta.x * _lookSensitivity * 0.1f;
+                _pitch -= delta.y * _lookSensitivity * 0.1f;
+                _pitch  = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
             }
 
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
@@ -239,10 +243,6 @@ namespace SoccerBot
         private void ApplyChargeRecoil()
         {
             if (_fpsCamera == null) return;
-            // Skip while detached during scenario playback — without a parent,
-            // localPosition == position, so Lerping it pulls the camera in world
-            // space toward origin (visible as a forward drift after the shot).
-            if (_fpsCamera.transform.parent == null) return;
             float p = CurrentPower01;
             // Pull the camera back slightly as power builds — gives weight to the windup.
             Vector3 target = _cameraRestLocalPos + new Vector3(0f, 0f, -p * _chargeRecoilOffset);

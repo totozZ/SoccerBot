@@ -45,6 +45,16 @@ namespace SoccerBot
         private Coroutine   _fadeRoutine;
         private MatchFlowController.Phase _lastPhase = MatchFlowController.Phase.Idle;
 
+        // Backstop against a duplicate AudioManager sneaking back into the scene
+        // (the editor Wirer dedups at author time; this guards at runtime).
+        private static AudioManager _instance;
+
+        void Awake()
+        {
+            if (_instance != null && _instance != this) { Destroy(this); return; }
+            _instance = this;
+        }
+
         void Start()
         {
             if (_matchFlow == null)

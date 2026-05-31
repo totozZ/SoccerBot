@@ -92,8 +92,6 @@ namespace SoccerBot
         public Phase CurrentPhase { get; private set; } = Phase.Idle;
 
         private Coroutine _loop;
-        private Vector3 _camRestPos;          // P7.2 fix: cached camera world pose at shot moment
-        private Quaternion _camRestRot;
 
         void Start()
         {
@@ -314,14 +312,10 @@ namespace SoccerBot
             }
             if (_ball != null) _ball.Detach();
 
-            // Detach FpsCamera so the player keeps watching from where they fired,
-            // rather than the camera tracking Player or Teammate during the kick.
-            if (_fpsCamera != null)
-            {
-                _camRestPos = _fpsCamera.position;
-                _camRestRot = _fpsCamera.rotation;
-                _fpsCamera.SetParent(null, true);
-            }
+            // The FPS camera stays parented to Player/FpsAnchor through the shot.
+            // The player doesn't move during Shot, so the view holds where they fired —
+            // and on Quest the headset's TrackedPoseDriver keeps driving head rotation
+            // unobstructed (detaching used to fight it and flipped the view 180°).
 
             float effectivePower = Mathf.Clamp01(power01 + Random.Range(-_randomJitter, _randomJitter));
 
@@ -436,18 +430,11 @@ namespace SoccerBot
         }
 
         // Shared wrap-up for both DoTeammateShot (code path) and HandleScenarioComplete
-        // (Intercepted scenario path): flips phase, reparents the camera.
+        // (Intercepted scenario path): flips phase to Score.
         private void HandleShotResolved()
         {
             if (CurrentPhase != Phase.Shot) return;
             CurrentPhase = Phase.Score;
-
-            if (_fpsCamera != null && _fpsAnchor != null)
-            {
-                _fpsCamera.SetParent(_fpsAnchor, true);
-                _fpsCamera.localPosition = Vector3.zero;
-                _fpsCamera.localRotation = Quaternion.identity;
-            }
         }
 
         private void HandleScenarioComplete(Scenario s)

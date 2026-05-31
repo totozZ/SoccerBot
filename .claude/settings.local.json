@@ -301,7 +301,27 @@
       "Bash(curl -s --max-time 30 -X POST http://localhost:8090/skill/debug_check_compilation -H \"Content-Type: application/json\" -d '{}')",
       "Bash(curl -s --max-time 30 -X POST http://localhost:8090/skill/debug_get_errors -H \"Content-Type: application/json\" -d '{}')",
       "Bash(curl -s --max-time 30 -X POST http://localhost:8090/skill/script_get_compile_feedback -H \"Content-Type: application/json\" -d '{\"path\":\"Assets/Scripts/XR/XRSetup.cs\"}')",
-      "Bash(curl -s --max-time 30 -X POST http://localhost:8090/skill/script_get_compile_feedback -H \"Content-Type: application/json\" -d '{\"scriptPath\":\"Assets/Scripts/XR/XRSetup.cs\"}')"
+      "Bash(curl -s --max-time 30 -X POST http://localhost:8090/skill/script_get_compile_feedback -H \"Content-Type: application/json\" -d '{\"scriptPath\":\"Assets/Scripts/XR/XRSetup.cs\"}')",
+      "Bash(grep -iE \"\\\\.apk$|\\\\.utmp|/Library/|/Temp/|/Logs/|/obj/\")",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(git rm *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(awk '{print $5,$9}')",
+      "Bash(git check-ignore *)",
+      "Bash(git commit *)",
+      "Bash(git add *)",
+      "Bash(git branch *)",
+      "Bash(git rev-list *)",
+      "Bash(git cat-file *)",
+      "Bash(awk '$1==\"blob\" && $2>3000000 {n=$3; split\\(n,a,\"/\"\\); key=a[1]\"/\"a[2]\"/\"a[3]; sz[key]+=$2} END {for\\(k in sz\\) print int\\(sz[k]/1048576\\)\"MB  \"k}')",
+      "Bash(awk -F/ '{print $3}')",
+      "Bash(git reset *)",
+      "Bash(adb version *)",
+      "Bash(adb devices *)",
+      "PowerShell(adb version)",
+      "PowerShell(adb devices)",
+      "Bash(curl -s http://127.0.0.1:8090/health)",
+      "Bash(curl -s \"http://localhost:8090/skills?category=Perception\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"

@@ -10,6 +10,7 @@
 // PC testing: run SoccerBot → Setup XR Origin, then press Play. No Simulator needed.
 
 using UnityEngine;
+using UnityEngine.UI;
 using Unity.XR.CoreUtils;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
@@ -52,6 +53,94 @@ namespace SoccerBot
             }
 
             EnableHeadTrackingOnRenderCamera();
+            ConvertOverlayCanvasesToWorldSpace();
+        }
+
+        // Screen Space - Overlay canvases do NOT render in VR stereo — the HUD and
+        // intro/title text are invisible on Quest even though they work on PC flat
+        // screen. Convert every Overlay canvas to World Space at startup and head-lock
+        // it a fixed distance in front of the render camera so it follows the gaze.
+        //
+        // Done in code (not the scene) so no manual Canvas re-authoring is needed and
+        // the demo's existing Inspector wiring (CanvasGroup fades, TMP refs) is untouched.
+        [Header("World-Space UI (VR)")]
+        [Tooltip("Distance in meters to place converted overlay canvases in front of the camera.")]
+        [SerializeField] private float _uiDistance = 2.0f;
+        [Tooltip("World height of a converted canvas in meters. Width follows its reference aspect.")]
+        [SerializeField] private float _uiWorldHeight = 1.4f;
+        [Tooltip("Intro/title canvas world height (meters). Bigger than the HUD so the opening card fills more of the view.")]
+        [SerializeField] private float _introWorldHeight = 2.6f;
+        [Tooltip("Intro/title canvas distance (meters). Closer than the HUD for a more immersive opening.")]
+        [SerializeField] private float _introDistance = 1.7f;
+
+        private void ConvertOverlayCanvasesToWorldSpace()
+        {
+            var renderCam = ResolveRenderCamera();
+
+            // FindObjectsInactive.Include — IntroCanvas starts inactive in the scene,
+            // so a plain search would miss it.
+            var canvases = FindObjectsByType<Canvas>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            foreach (var canvas in canvases)
+            {
+                if (canvas.renderMode != RenderMode.ScreenSpaceOverlay) continue;
+
+                // Reference resolution (e.g. 800×600) defines the canvas aspect; we keep
+                // that aspect but scale to a sane physical size in meters.
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                float refW = scaler != null && scaler.referenceResolution.x > 0 ? scaler.referenceResolution.x : 800f;
+                float refH = scaler != null && scaler.referenceResolution.y > 0 ? scaler.referenceResolution.y : 600f;
+
+                canvas.renderMode = RenderMode.WorldSpace;
+                canvas.worldCamera = renderCam;
+
+                // The intro/title card gets its own (larger, closer) treatment so it
+                // fills more of the view than the in-match HUD.
+                bool isIntro = canvas.name.ToLowerInvariant().Contains("intro");
+                float worldHeight = isIntro ? _introWorldHeight : _uiWorldHeight;
+                float distance    = isIntro ? _introDistance    : _uiDistance;
+
+                var rt = canvas.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    rt.sizeDelta = new Vector2(refW, refH);
+                    // height = worldHeight meters → uniform scale that maps refH px to it.
+                    float scale = worldHeight / refH;
+                    rt.localScale = new Vector3(scale, scale, scale);
+
+                    // Overlay canvases keep their pivot/anchors at the bottom-left (0,0).
+                    // In World Space that anchors the canvas's lower-left corner at the
+                    // follower's position, so the visible UI spreads up-and-right.
+                    // Re-center pivot/anchors so the canvas is centered on the gaze point.
+                    rt.pivot     = new Vector2(0.5f, 0.5f);
+                    rt.anchorMin = new Vector2(0.5f, 0.5f);
+                    rt.anchorMax = new Vector2(0.5f, 0.5f);
+                    rt.anchoredPosition3D = Vector3.zero;
+                }
+
+                var follower = canvas.gameObject.GetComponent<WorldUIFollower>();
+                if (follower == null) follower = canvas.gameObject.AddComponent<WorldUIFollower>();
+                follower.Init(renderCam != null ? renderCam.transform : null, distance);
+
+                Debug.Log($"[XRSetup] Canvas '{canvas.name}' → World Space, head-locked at {distance}m.");
+            }
+        }
+
+        private Camera ResolveRenderCamera()
+        {
+            // Prefer the actual render camera (Player/FpsAnchor/FpsCamera); fall back to main.
+            var playerGO = GameObject.Find("Player");
+            if (playerGO != null)
+            {
+                var fpsCameraT = playerGO.transform.Find("FpsAnchor/FpsCamera");
+                if (fpsCameraT != null)
+                {
+                    var cam = fpsCameraT.GetComponent<Camera>();
+                    if (cam != null) return cam;
+                }
+            }
+            return Camera.main;
         }
 
         // The camera that actually renders is Player/FpsAnchor/FpsCamera (the XR Camera
@@ -286,6 +375,37 @@ namespace SoccerBot
                 var worldMove = transform.TransformDirection(move.normalized) * speed * Time.deltaTime;
                 transform.position += worldMove;
             }
+        }
+    }
+
+    // ── World-space UI head-lock ───────────────────────────────
+    // Keeps a converted World Space canvas a fixed distance in front of the camera
+    // and facing it, so HUD / intro text follows the player's gaze in VR. Added at
+    // runtime by XRSetup.ConvertOverlayCanvasesToWorldSpace — no scene wiring needed.
+    public class WorldUIFollower : MonoBehaviour
+    {
+        private Transform _cam;
+        private float _distance = 2.0f;
+
+        public void Init(Transform cam, float distance)
+        {
+            _cam = cam;
+            _distance = distance;
+            SnapToFront();
+        }
+
+        void LateUpdate()
+        {
+            if (_cam == null) return;
+            SnapToFront();
+        }
+
+        private void SnapToFront()
+        {
+            if (_cam == null) return;
+            transform.position = _cam.position + _cam.forward * _distance;
+            // Face the camera (UI faces +Z, so look in the camera's forward direction).
+            transform.rotation = Quaternion.LookRotation(transform.position - _cam.position, _cam.up);
         }
     }
 }
