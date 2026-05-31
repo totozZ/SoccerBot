@@ -79,6 +79,13 @@ namespace SoccerBot
         [SerializeField] private float _teammateRunFraction = 0.3f;     // dash completes within this fraction of _shotFlightTime
         [SerializeField] private float _resultHoldDelay = 0.6f;         // pause after ball hits target before showing ScorePanel
 
+        [Header("NPC Reactions")]
+        [Tooltip("Opponent slowly turns to face the ball while the player has possession.")]
+        [SerializeField] private bool _opponentTracksBall = true;
+        [SerializeField, Range(1f, 10f)] private float _opponentLookSpeed = 4f;
+        [Tooltip("Teammate does a small bounce celebration after scoring.")]
+        [SerializeField] private bool _teammateCelebrates = true;
+
         [Header("Whistle")]
         [SerializeField] private AudioSource _whistleSource;
 
@@ -276,7 +283,23 @@ namespace SoccerBot
             }
 
             // Hold here until HandlePlayerShot flips the phase to Shot.
-            while (CurrentPhase == Phase.Possession) yield return null;
+            while (CurrentPhase == Phase.Possession)
+            {
+                // Opponent slowly turns to watch the ball while player has possession.
+                if (_opponentTracksBall && _opponentTransform != null && _ball != null)
+                {
+                    Vector3 toBall = _ball.transform.position - _opponentTransform.position;
+                    toBall.y = 0f;
+                    if (toBall.sqrMagnitude > 0.01f)
+                    {
+                        Quaternion targetRot = Quaternion.LookRotation(toBall);
+                        _opponentTransform.rotation = Quaternion.Slerp(
+                            _opponentTransform.rotation, targetRot,
+                            Time.deltaTime * _opponentLookSpeed);
+                    }
+                }
+                yield return null;
+            }
         }
 
         private IEnumerator DoShotAndScore()
@@ -411,7 +434,36 @@ namespace SoccerBot
             // ─ Phase 4: pause, then show score and resolve ─
             yield return new WaitForSeconds(_resultHoldDelay);
             if (_scorePanel != null && panelData != null) _scorePanel.Show(panelData);
+
+            // Teammate celebration bounce on Score outcome.
+            if (_teammateCelebrates && panelData != null && panelData.outcome == ScenarioOutcome.Score
+                && _teammateTransform != null)
+            {
+                StartCoroutine(CelebrationBounce(_teammateTransform));
+            }
+
             HandleShotResolved();
+        }
+
+        // Three small bounces: teammate jumps up 0.3 m twice to celebrate a goal.
+        private IEnumerator CelebrationBounce(Transform npc)
+        {
+            Vector3 groundPos = npc.position;
+            float bounceHeight = 0.3f;
+            float bounceDuration = 0.25f;
+            int bounces = 3;
+            for (int i = 0; i < bounces; i++)
+            {
+                float t = 0f;
+                while (t < bounceDuration)
+                {
+                    t += Time.deltaTime;
+                    float u = t / bounceDuration;
+                    npc.position = groundPos + Vector3.up * (bounceHeight * 4f * u * (1f - u));
+                    yield return null;
+                }
+                npc.position = groundPos;
+            }
         }
 
         private IEnumerator ParabolicLerp(Transform target, Vector3 start, Vector3 end, float duration, float apex)

@@ -1761,6 +1761,9 @@ MonoBehaviour:
   _ballController: {fileID: 1122507566}
   _slowMoLastSecond: 1
   _slowMoScale: 0.35
+  _npcSpawnBlendDuration: 0.4
+  _interceptPulseEnabled: 1
+  _interceptPulseDelay: 0.5
 --- !u!4 &49929485
 Transform:
   m_ObjectHideFlags: 0
@@ -3563,6 +3566,9 @@ MonoBehaviour:
   _teammateRunDistance: 2
   _teammateRunFraction: 0.3
   _resultHoldDelay: 0.3
+  _opponentTracksBall: 1
+  _opponentLookSpeed: 4
+  _teammateCelebrates: 1
   _whistleSource: {fileID: 0}
   _scoreSuccessData: {fileID: 11400000, guid: 9b1f45eef72f1484bbbf83ea20bdce3e, type: 2}
   _shotMissedData: {fileID: 11400000, guid: 1bb34296eb2368142bac605c2e873a57, type: 2}

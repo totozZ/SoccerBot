@@ -13,17 +13,17 @@
 - [x] **P7** 演示流程状态机 FlowManager（串联启动→比赛→操作→演算→评分全流程）
 - [x] **P7.1** IntroManager 启动画面（黑底白字 + 比赛背景简介 + BGM 淡入）
 - [x] **P7.2 (PC 原型)** MatchFlowController + FPSPlayerController + PowerBarUI（一轮一传 / 长按蓄力 / 力度+随机选剧本）
-- [ ] **P7.2 (VR 完整版)** Quest 手柄绑定（A/Trigger 蓄力射门 + 体感方向追踪）— ⚠️ 真机暴露三 bug，根因已查明待修：①视角翻向背后 ②介绍/HUD 右上角 ③球过大缩 80%
+- [x] **P7.2 (VR 完整版)** Quest 手柄绑定（A/Trigger 蓄力射门 + 体感方向追踪）— ✅ VR 三 bug 已修（视角/HUD/球大小）
 - [x] **P7.3** ReplayDirector 演算导演（根据玩家操作选分支剧本 + 慢动作回放）
 - [x] **P7.4** AudioManager BGM 管理（背景音乐 + 音效事件触发）
-- [ ] **P7.5** 修 4 个已知 bug（详见「已知问题」节）— 约 0.5 天
+- [x] **P7.5** 修 4 个已知 bug（视角/HUD/球/音频）— ✅ v6.9 已修
 - [x] **P8** Quest 3S APK 构建 + 部署（已成功 sideload 启动，A 键意外可触发射门）
 - [ ] **P9** 性能优化 — 目标：Quest 稳定 72fps / Draw Call < 200 / APK < 150MB
 - [ ] **P10** 演示视频拍摄 + 剪辑 — 分镜脚本 / 旁白文案 / VR 内录屏
 
 ---
 
-> 版本: v6.8.0 | 日期: 2026-05-31 | 状态: 文档充实——新增架构总览/事件总线/输入映射/已知问题/测试清单/术语表/风险登记/版本里程碑 8 个段落；代码未动，VR 三 bug + 音频 bug 待下次修
+> 版本: v6.9.0 | 日期: 2026-05-31 | 状态: P7.2 VR 完整版 + P7.5 四个 bug 已修复；进入美术/演示/功能优化阶段
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -113,7 +113,7 @@
 | **P6.5 视觉打磨** | ✅ 完成 | FieldBuilder 程序化球场 + PolishVolumeBuilder 后处理 + OutcomeFx 粒子 + 4 角 SpotLight + 3 静态机位 + HUD 开关 + ScoreBoard 比分牌 |
 | **P7.2 PC 原型** | ✅ 完成（v6.3 重构） | 三角色架构 + FPSPlayerController + PowerBarUI + MatchFlow 一轮循环 |
 | **演示流程其余项** | ✅ 脚本完成 + 已挂载 | IntroManager + ReplayDirector + AudioManager 已挂入场景。⚠️ 音频 bug 未修 |
-| **VR 真机三 bug** | 🔲 根因已查明待修 | 视角翻向背后 / HUD 右上角 / 球过大 |
+| **VR 真机三 bug** | ✅ 已修复 | 视角/HUD/球大小 均在 v6.9 修复 |
 | **Quest 3S 部署** | ✅ APK 跑通 | sideload 成功，VR 内可见球场和剧本演算 |
 | NTManager / robot C++ | ⬇️ 优先级降低 | 真机联调本期不做，FakeData 顶 |
 
@@ -428,7 +428,7 @@ rt.anchoredPosition3D = Vector3.zero;
 | v6.6 | 2026-05-29 | 角色身高微调 + 力度条 UI 调整；定位音频不能切换 bug |
 | v6.7 | 2026-05-30 | Quest 3S APK sideload 成功；VR 真机暴露三个 bug，根因全部查明 |
 | **v6.8** | **2026-05-31** | **文档充实**：新增架构总览/事件总线/输入映射/已知问题/测试清单/术语表/风险登记/版本里程碑 |
-| v6.9 | 🔲 下次 | 修 4 个 bug（视角/HUD/球/音频）+ 复测 |
+| v6.9 | 2026-05-31 | 修 4 个 bug（视角/HUD/球/音频）+ VR 复测通过；P7.2 VR 完整版完成 |
 | v7.0 | 🔲 | P9 性能优化完成 + Quest 稳定 72fps |
 | v8.0 | 🔲 | P10 演示视频完成 + 项目交付 |
 
@@ -617,12 +617,15 @@ SoccerBot/
 
 ## 立即下一步
 
-### 下次实施（v6.9）— 约 0.5 天
+### 下次实施（v7.0）— 功能优化阶段
 
-1. **修 4 个已知 bug**（详见「已知问题」节修复方案摘要）
-2. **编辑器填槽**：跑 `SoccerBot/Wire AudioManager Clips` → 存场景
-3. **Quest 复测**：sideload 跑一轮，确认 3 个 VR bug 消失 + BGM 正常切换
-4. **如时间允许**：换 Opponent 模型（改 `ArtUpgradeHelper.cs` → 跑菜单 → 存场景）
+1. **拦截瞬移修复**：`ScenarioPlayer.cs` 加 NPC 跑入混合（`_npcSpawnBlendDuration` 0.4s lerp）
+2. **NPC 表现层行为**（个人兴趣项，纯表现）：
+   - Opponent Possession 阶段 LookAt 球
+   - Teammate Score 阶段庆祝动作
+   - Intercepted 阶段抢断特写震动效果
+3. **P9 性能优化**：Quest Profiler → 静态合批 + LOD + Shader 降级
+4. **P10 演示视频**：VR 输入跑通后录屏
 
 ### 后续
 

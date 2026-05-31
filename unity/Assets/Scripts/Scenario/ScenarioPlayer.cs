@@ -28,6 +28,15 @@ namespace SoccerBot
         [SerializeField] private bool _slowMoLastSecond = true;
         [SerializeField, Range(0.05f, 1f)] private float _slowMoScale = 0.5f;
 
+        [Header("NPC Spawn Blend")]
+        [Tooltip("NPCs blend from their Setup position to path[0] over this duration (seconds). Set 0 to disable.")]
+        [SerializeField, Range(0f, 1f)] private float _npcSpawnBlendDuration = 0.4f;
+
+        [Header("Intercept Pulse")]
+        [Tooltip("Opponent does a quick scale pulse when the Intercepted scenario plays.")]
+        [SerializeField] private bool _interceptPulseEnabled = true;
+        [SerializeField, Range(0f, 2f)] private float _interceptPulseDelay = 0.5f;   // seconds into scenario before pulse
+
         public event Action<Scenario> OnScenarioComplete;
 
         public bool IsPlaying { get; private set; }
@@ -67,6 +76,10 @@ namespace SoccerBot
 
             if (_ballController != null) _ballController.BeginExternalControl();
 
+            // Kick off intercept pulse on a separate coroutine so it doesn't block playback.
+            if (_interceptPulseEnabled && s.outcome == ScenarioOutcome.Intercepted && _opponentTransform != null)
+                StartCoroutine(InterceptPulse(_opponentTransform, _interceptPulseDelay));
+
             // P5.1: Offset all waypoints so the ball originates from the robot's
             // current world position instead of the design-time (0, 0.5, -1.5).
             // P7.2 fix: Y offset must be zero — the ball keyframes already encode
@@ -93,10 +106,16 @@ namespace SoccerBot
             float slowMoBoundary = Mathf.Max(0f, s.duration - 1f);
             bool slowMoApplied = false;
 
-            // Snap to t=0 so there's no visible jump on first frame, THEN reveal NPCs.
-            // This makes them appear cleanly at their start positions instead of
-            // teleporting from a stale scene-default location.
-            ApplySample(ballPath, teammatePath, opponentPath, 0f);
+            // Record NPC positions set by MatchFlowController during Setup,
+            // so we can blend from there to path[0] instead of teleporting.
+            Vector3 teammateSpawnPos = _teammateTransform != null ? _teammateTransform.position : Vector3.zero;
+            Quaternion teammateSpawnRot = _teammateTransform != null ? _teammateTransform.rotation : Quaternion.identity;
+            Vector3 opponentSpawnPos = _opponentTransform != null ? _opponentTransform.position : Vector3.zero;
+            Quaternion opponentSpawnRot = _opponentTransform != null ? _opponentTransform.rotation : Quaternion.identity;
+
+            // Snap ball to t=0, reveal NPCs at their Setup positions.
+            // NPCs blend to path[0] over _npcSpawnBlendDuration rather than teleporting.
+            if (_ballTransform != null) SampleTo(_ballTransform, ballPath, 0f);
             SetActive(_teammateTransform, true);
             SetActive(_opponentTransform, true);
 
@@ -115,6 +134,24 @@ namespace SoccerBot
                 }
 
                 ApplySample(ballPath, teammatePath, opponentPath, elapsed);
+
+                // During the spawn blend window, override NPC positions with a lerp
+                // from their Setup position to path[0], masking the teleport.
+                if (_npcSpawnBlendDuration > 0f && elapsed < _npcSpawnBlendDuration)
+                {
+                    float blendT = elapsed / _npcSpawnBlendDuration;
+                    if (teammatePath != null && teammatePath.Length > 0 && _teammateTransform != null)
+                    {
+                        _teammateTransform.position = Vector3.Lerp(teammateSpawnPos, teammatePath[0].position, blendT);
+                        _teammateTransform.rotation = Quaternion.Slerp(teammateSpawnRot, teammatePath[0].Rotation, blendT);
+                    }
+                    if (opponentPath != null && opponentPath.Length > 0 && _opponentTransform != null)
+                    {
+                        _opponentTransform.position = Vector3.Lerp(opponentSpawnPos, opponentPath[0].position, blendT);
+                        _opponentTransform.rotation = Quaternion.Slerp(opponentSpawnRot, opponentPath[0].Rotation, blendT);
+                    }
+                }
+
                 yield return null;
                 elapsed += Time.deltaTime;
             }
@@ -208,6 +245,30 @@ namespace SoccerBot
         private static void SetActive(Transform t, bool active)
         {
             if (t != null) t.gameObject.SetActive(active);
+        }
+
+        // Quick scale-up/down pulse on the opponent to sell the intercept moment.
+        private static IEnumerator InterceptPulse(Transform npc, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            Vector3 baseScale = npc.localScale;
+            Vector3 bigScale  = baseScale * 1.25f;
+            float half = 0.12f;
+            float t = 0f;
+            while (t < half)
+            {
+                t += Time.deltaTime;
+                npc.localScale = Vector3.Lerp(baseScale, bigScale, t / half);
+                yield return null;
+            }
+            t = 0f;
+            while (t < half)
+            {
+                t += Time.deltaTime;
+                npc.localScale = Vector3.Lerp(bigScale, baseScale, t / half);
+                yield return null;
+            }
+            npc.localScale = baseScale;
         }
 
         void OnDisable()
