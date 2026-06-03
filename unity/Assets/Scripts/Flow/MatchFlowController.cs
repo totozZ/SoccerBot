@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace SoccerBot
 {
@@ -73,10 +74,11 @@ namespace SoccerBot
         [SerializeField] private Scenario _shotMissedData;
 
         public Phase CurrentPhase { get; private set; } = Phase.Idle;
-        public event Action OnMatchFinished;
 
         private Coroutine _loop;
         private bool _isMatchRunning;
+        private InputAction _menuAction;
+        private MainMenuPanel _mainMenu;
 
         void Start()
         {
@@ -85,6 +87,12 @@ namespace SoccerBot
             if (_player != null) _player.OnShoot += HandlePlayerShot;
             if (_scenarioPlayer != null) _scenarioPlayer.OnScenarioComplete += HandleScenarioComplete;
 
+            _menuAction = new InputAction("OpenMenu", InputActionType.Button);
+            _menuAction.AddBinding("<Keyboard>/escape");
+            _menuAction.AddBinding("<XRController>{LeftHand}/menuButton");
+            _menuAction.AddBinding("<XRController>{RightHand}/secondaryButton");
+            _menuAction.Enable();
+
             ResetForMenu();
         }
 
@@ -92,6 +100,12 @@ namespace SoccerBot
         {
             if (_player != null) _player.OnShoot -= HandlePlayerShot;
             if (_scenarioPlayer != null) _scenarioPlayer.OnScenarioComplete -= HandleScenarioComplete;
+            if (_menuAction != null)
+            {
+                _menuAction.Disable();
+                _menuAction.Dispose();
+                _menuAction = null;
+            }
         }
 
         public void PrepareForMatchStart()
@@ -105,6 +119,8 @@ namespace SoccerBot
             PrepareForMatchStart();
             _isMatchRunning = true;
             if (_hudRoot != null) _hudRoot.SetActive(true);
+            if (_mainMenu != null) _mainMenu.gameObject.SetActive(false);
+            if (_loop != null) StopCoroutine(_loop);
             _loop = StartCoroutine(MatchLoop());
         }
 
@@ -128,6 +144,18 @@ namespace SoccerBot
             _scorePanel?.HideImmediate();
             if (_ball != null && _robotTransform != null)
                 _ball.AttachTo(_robotTransform, _ballOffsetRobot);
+        }
+
+        void Update()
+        {
+            if (_menuAction == null || !_menuAction.WasPressedThisFrame()) return;
+            if (_mainMenu == null) return;
+
+            bool menuOpen = _mainMenu.gameObject.activeSelf && _mainMenu.gameObject.activeInHierarchy;
+            if (menuOpen) return;
+
+            ResetForMenu();
+            _mainMenu.ShowMenu();
         }
 
         private void AutoResolveRefs()
@@ -190,6 +218,7 @@ namespace SoccerBot
                 var hud = GameObject.Find("HUD");
                 if (hud != null) _hudRoot = hud;
             }
+            if (_mainMenu == null) _mainMenu = FindFirstObjectByType<MainMenuPanel>(FindObjectsInactive.Include);
         }
 
         private void PlayWhistle()
@@ -206,15 +235,20 @@ namespace SoccerBot
 
         private IEnumerator MatchLoop()
         {
-            yield return DoSetup();
-            yield return DoPass();
-            yield return DoPossession();
-            yield return DoShotAndScore();
-            yield return DoCooldown();
+            while (_isMatchRunning)
+            {
+                yield return DoSetup();
+                if (!_isMatchRunning) yield break;
+                yield return DoPass();
+                if (!_isMatchRunning) yield break;
+                yield return DoPossession();
+                if (!_isMatchRunning) yield break;
+                yield return DoShotAndScore();
+                if (!_isMatchRunning) yield break;
+                yield return DoCooldown();
+            }
 
             _loop = null;
-            ResetForMenu();
-            OnMatchFinished?.Invoke();
         }
 
         private IEnumerator DoSetup()

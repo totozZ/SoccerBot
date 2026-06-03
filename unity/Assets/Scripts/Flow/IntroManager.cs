@@ -36,8 +36,6 @@ namespace SoccerBot
             if (_matchFlow != null)
             {
                 _matchFlow.ResetForMenu();
-                _matchFlow.OnMatchFinished -= HandleMatchFinished;
-                _matchFlow.OnMatchFinished += HandleMatchFinished;
             }
 
             if (_introPanel != null)
@@ -56,7 +54,6 @@ namespace SoccerBot
         void OnDestroy()
         {
             if (_introPanel != null) _introPanel.OnIntroDone -= StartMatch;
-            if (_matchFlow != null) _matchFlow.OnMatchFinished -= HandleMatchFinished;
         }
 
         public void BeginMatchFromMenu()
@@ -84,12 +81,6 @@ namespace SoccerBot
             if (_audioManager != null) _audioManager.StopBGM();
             if (_matchFlow != null) _matchFlow.BeginMatch();
             _isMatchStarting = false;
-        }
-
-        private void HandleMatchFinished()
-        {
-            if (_audioManager != null) _audioManager.StopBGM();
-            if (_mainMenu != null) _mainMenu.ShowMenu();
         }
     }
 }
