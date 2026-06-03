@@ -16,52 +16,55 @@ MonoBehaviour:
   flavorText: "\u961F\u53CB\u63A5\u7403\u4F46\u5C04\u95E8\u504F\u51FA"
   outcome: 2
   finalScore: 50
-  duration: 5
+  duration: 6
   ballPath:
   - t: 0
     position: {x: 0, y: 0.5, z: -1.5}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 0.6
-    position: {x: 0.4, y: 0.9, z: -0.5}
+  - t: 0.7
+    position: {x: 0.4, y: 1.4, z: -0.3}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 1.2
-    position: {x: 0.8, y: 0.5, z: 0.5}
+  - t: 1.6
+    position: {x: 1, y: 0.5, z: 1}
     eulerRotation: {x: 0, y: 0, z: 0}
   - t: 2.5
-    position: {x: 0.8, y: 0.4, z: 0.5}
+    position: {x: 1, y: 0.4, z: 1}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 3.4
-    position: {x: 1.4, y: 0.7, z: 1.6}
+  - t: 3.5
+    position: {x: 1.8, y: 1.2, z: 3.5}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 4.2
-    position: {x: 2.5, y: 0.5, z: 2.4}
+  - t: 4.5
+    position: {x: 2.8, y: 1.6, z: 6}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 5
-    position: {x: 3.2, y: 0.2, z: 2.8}
+  - t: 5.5
+    position: {x: 3.8, y: 1, z: 8.5}
+    eulerRotation: {x: 0, y: 0, z: 0}
+  - t: 6
+    position: {x: 4.5, y: 0.5, z: 9.5}
     eulerRotation: {x: 0, y: 0, z: 0}
   teammatePath:
   - t: 0
-    position: {x: 0.8, y: 0, z: 0.5}
+    position: {x: 0.8, y: 0, z: 1}
     eulerRotation: {x: 0, y: 0, z: 0}
-  - t: 1.2
-    position: {x: 0.8, y: 0, z: 0.5}
+  - t: 1.6
+    position: {x: 0.8, y: 0, z: 1}
     eulerRotation: {x: 0, y: 0, z: 0}
   - t: 2.5
-    position: {x: 0.8, y: 0, z: 0.5}
-    eulerRotation: {x: 0, y: 60, z: 0}
-  - t: 3.4
-    position: {x: 1, y: 0, z: 0.8}
-    eulerRotation: {x: 0, y: 60, z: 0}
-  - t: 5
-    position: {x: 1.5, y: 0, z: 1.2}
-    eulerRotation: {x: 0, y: 60, z: 0}
+    position: {x: 0.8, y: 0, z: 1}
+    eulerRotation: {x: 0, y: 30, z: 0}
+  - t: 3.5
+    position: {x: 1.5, y: 0, z: 2.5}
+    eulerRotation: {x: 0, y: 30, z: 0}
+  - t: 6
+    position: {x: 2, y: 0, z: 4}
+    eulerRotation: {x: 0, y: 30, z: 0}
   opponentPath:
   - t: 0
-    position: {x: -0.8, y: 0, z: 1}
+    position: {x: -1, y: 0, z: 1.5}
     eulerRotation: {x: 0, y: 180, z: 0}
-  - t: 2.5
-    position: {x: -0.4, y: 0, z: 1.2}
+  - t: 3
+    position: {x: -0.5, y: 0, z: 3}
     eulerRotation: {x: 0, y: 200, z: 0}
-  - t: 5
-    position: {x: 0.5, y: 0, z: 1.5}
+  - t: 6
+    position: {x: 0.5, y: 0, z: 5}
     eulerRotation: {x: 0, y: 220, z: 0}

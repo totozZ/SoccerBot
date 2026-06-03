@@ -92,8 +92,8 @@ namespace SoccerBot.EditorTools
                 Wp(0.0f,  0.0f, 0.5f, -1.5f),
                 Wp(0.7f,  0.3f, 1.2f,  0.2f),
                 Wp(1.4f,  0.5f, 0.5f,  1.5f),  // intercepted mid-air
-                Wp(2.5f, -0.5f, 0.4f,  0.8f),  // opponent dribbles back
-                Wp(3.5f, -2.0f, 0.4f, -0.5f),
+                Wp(2.5f, -0.78f, 0.32f,  0.72f),
+                Wp(3.5f, -2.35f, 0.32f, -0.5f),
             };
 
             s.teammatePath = new[]
