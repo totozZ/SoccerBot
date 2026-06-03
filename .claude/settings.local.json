@@ -324,7 +324,10 @@
       "Bash(curl -s \"http://localhost:8090/skills?category=Perception\")",
       "Bash(git revert *)",
       "Bash(git push *)",
-      "Bash(apply_patch)"
+      "Bash(apply_patch)",
+      "Bash(Get-ChildItem -Name \"C:\\\\Users\\\\95833\\\\Desktop\\\\WayiProject\\\\project\\\\足球机器人\\\\SoccerBot\\\\unity\\\\Assets\\\\Scripts\")",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\95833\\\\Desktop\\\\WayiProject\\\\project\\\\足球机器人\\\\SoccerBot\\\\unity\\\\Assets\\\\Scripts\" | Where-Object { $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "PowerShell(dotnet build \"C:\\\\Users\\\\95833\\\\Desktop\\\\WayiProject\\\\project\\\\���������\\\\SoccerBot\\\\unity\\\\unity.slnx\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"

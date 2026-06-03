@@ -618,20 +618,18 @@ SoccerBot/
 
 ## 立即下一步
 
-### 下次实施（v7.0）— 功能优化阶段
+### 下次实施（P11 当前版本）— Training Mode 收口
 
-1. **拦截瞬移修复**：`ScenarioPlayer.cs` 加 NPC 跑入混合（`_npcSpawnBlendDuration` 0.4s lerp）
-2. **NPC 表现层行为**（个人兴趣项，纯表现）：
-   - Opponent Possession 阶段 LookAt 球
-   - Teammate Score 阶段庆祝动作
-   - Intercepted 阶段抢断特写震动效果
-3. **P9 性能优化**：Quest Profiler → 静态合批 + LOD + Shader 降级
-4. **P10 演示视频**：VR 输入跑通后录屏
+1. **训练模式去演示耦合**：Training Mode 必须与主比赛演示链路解耦，不再共享海绵宝宝 / Robot 站位语义
+2. **训练场独立化**：训练球、训练场、训练 UI 都由 SmartBall 训练子系统独立管理，进入 Training 后只显示训练环境
+3. **Mock 行为升级**：Mock 不只输出旋转，还要给出训练态的球位置/运动表现，让“数据在动”和“球在动”一致
+4. **BLE 接口预留**：先保持 Mock 跑通，再把真实 BS-BT91 数据接进同一接口
 
 ### 后续
 
-- **P9 性能优化** 穿插进行，先跑 Quest Profiler 看瓶颈
-- **P10 演示视频** 等 VR 输入跑通后录屏
+- **P11 BLE 真机联调**：补 `BleSmartBallSource`、扫描/连接/通知订阅
+- **P9 性能优化** 可穿插进行，但优先级低于 P11 训练模式成型
+- **P10 演示视频** 等 P11 训练模式画面稳定后录屏
 
 ---
 
@@ -652,34 +650,34 @@ SoccerBot/
 ### 分阶段实施计划
 
 ```
-P11.1  3D 足球模型 + Prefab
-       ├─ 找/做一个足球 3D 模型（FBX/OBJ）
-       ├─ 贴图：经典黑白五边形纹理
-       └─ 做成 SmartBall.prefab，放到 Resources/
+P11.1  独立 Training 场景语义
+       ├─ Training Mode 不再依赖 Robot / 海绵宝宝 / 比赛流程站位
+       ├─ 进入 Training 后只保留训练场、训练球、训练 UI
+       └─ 训练对象由 SmartBall 子系统统一生成/管理
 
 P11.2  数据模型 + Mock 驱动（可 PC 独立调试）
-       ├─ SmartBallData.cs：封装欧拉角 / 四元数 / 加速度
-       ├─ ISmartBallSource 接口（同 IDataSource 模式）
-       ├─ MockSmartBallSource：键盘/鼠标旋转球（PC 调试用）
-       └─ SmartBallController.cs：每帧从 Source 取姿态 → transform.rotation
+       ├─ SmartBallData.cs：封装四元数 / 角速度 / 时间戳
+       ├─ ISmartBallSource：独立于 IDataSource 的训练数据接口
+       ├─ MockSmartBallSource：输出可见的训练态假数据
+       └─ SmartBallController.cs：同时驱动球的旋转与训练用位置表现
 
-P11.3  训练模式场景集成
-       ├─ 在 Training Placeholder 场景中实例化 SmartBall
-       ├─ 球放在球场中央（如点球点位置）
-       ├─ PC 端：Mock 模式下用鼠标拖拽旋转球
-       └─ 添加 BLE 连接状态 UI（搜索中 / 已连接 / 信号强度）
+P11.3  训练场集成
+       ├─ 运行时或场景内生成独立训练草地 / 中线 / 中心圈 / 球门
+       ├─ SmartBall 默认摆在训练场核心区域，不再落在海绵宝宝脚下
+       ├─ UI 只保留训练状态卡，不再显示主菜单遮罩
+       └─ Mock 数据变化时，球在画面中也要有对应运动表现
 
 P11.4  Android BLE 插件（Quest 端真机联调）
-       ├─ Unity Android BLE Plugin（或手写 .aar）
        ├─ 扫描 BS-BT91 设备（按名称/服务 UUID 过滤）
        ├─ 连接 → 订阅 Notify Characteristic → 接收数据帧
-       └─ 数据帧解析器（按 BS-BT91 协议格式）
+       ├─ 数据帧解析器（按 BS-BT91 协议格式）
+       └─ 真实数据替换 Mock source，不改 Training Mode 上层逻辑
 
 P11.5  VR 内展示打磨
-       ├─ 球的大小匹配真实足球（直径 ~22cm）
+       ├─ 球大小匹配真实足球（直径 ~22cm）
        ├─ 旋转平滑滤波（减少 IMU 抖动）
-       ├─ 可选：球拖尾特效（同现有 TrajectoryRenderer）
-       └─ 可选：踢球检测（加速度突变 → 触发事件）
+       ├─ 训练视角、场地、UI 可读性调整
+       └─ 视需求增加踢球检测 / 轨迹表现
 ```
 
 ### 架构图

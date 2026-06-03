@@ -10,6 +10,7 @@ namespace SoccerBot
     {
         [Header("UI References")]
         [SerializeField] private CanvasGroup _canvasGroup;
+        [SerializeField] private Image _backgroundImage;
         [SerializeField] private Button _startButton;
         [SerializeField] private Button _trainingButton;
         [SerializeField] private Button _exitButton;
@@ -18,6 +19,8 @@ namespace SoccerBot
         [SerializeField] private CanvasGroup _trainingCanvasGroup;
         [SerializeField] private Button _trainingBackButton;
         [SerializeField] private GameObject _trainingGoalFrame;
+        [SerializeField] private TextMeshProUGUI _trainingStatusLabel;
+        [SerializeField] private TrainingModeController _trainingModeController;
 
         [Header("Flow")]
         [SerializeField] private IntroManager _introManager;
@@ -58,6 +61,9 @@ namespace SoccerBot
             if (_introManager == null)
                 _introManager = FindFirstObjectByType<IntroManager>(FindObjectsInactive.Include);
 
+            if (_trainingModeController == null)
+                _trainingModeController = FindFirstObjectByType<TrainingModeController>(FindObjectsInactive.Include);
+
             if (_bgmSource == null)
             {
                 _bgmSource = gameObject.GetComponent<AudioSource>();
@@ -66,6 +72,9 @@ namespace SoccerBot
                 _bgmSource.loop = true;
                 _bgmSource.spatialBlend = 0f;
             }
+
+            if (_backgroundImage == null)
+                _backgroundImage = gameObject.GetComponent<Image>();
 
             if (_uiSfxSource == null)
             {
@@ -100,6 +109,7 @@ namespace SoccerBot
             var background = gameObject.GetComponent<Image>();
             if (background == null) background = gameObject.AddComponent<Image>();
             background.color = new Color(0f, 0f, 0f, 0.88f);
+            _backgroundImage = background;
 
             if (_canvasGroup == null)
                 _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
@@ -120,6 +130,7 @@ namespace SoccerBot
             if (_trainingGoalFrame == null)
                 _trainingGoalFrame = BuildTrainingGoalFrame();
 
+            EnsureTrainingModeController();
             _isBuilt = true;
         }
 
@@ -142,6 +153,9 @@ namespace SoccerBot
         {
             gameObject.SetActive(true);
             HideTrainingImmediate();
+            SetButtonsVisible(true);
+            SetBackgroundVisible(true);
+            SetButtonsInteractable(true);
             StopAllCoroutines();
             StartCoroutine(FadeInMenu());
             PlayBGM();
@@ -150,7 +164,9 @@ namespace SoccerBot
         public void ShowTrainingPlaceholder()
         {
             StopAllCoroutines();
-            SetMenuAlpha(0f, false);
+            SetMenuAlpha(1f, false);
+            SetButtonsVisible(false);
+            SetBackgroundVisible(false);
             if (_trainingGoalFrame != null) _trainingGoalFrame.SetActive(true);
             if (_trainingCanvasGroup != null)
             {
@@ -172,6 +188,8 @@ namespace SoccerBot
                 _trainingCanvasGroup.blocksRaycasts = false;
                 _trainingCanvasGroup.gameObject.SetActive(false);
             }
+
+            _trainingModeController?.ExitTrainingMode();
         }
 
         private void PlayBGM()
@@ -234,6 +252,7 @@ namespace SoccerBot
             StartCoroutine(FadeBGMOut());
             yield return FadeOutMenu();
             ShowTrainingPlaceholder();
+            _trainingModeController?.EnterTrainingMode();
         }
 
         private IEnumerator FadeInMenu()
@@ -296,6 +315,19 @@ namespace SoccerBot
             if (_trainingBackButton != null) _trainingBackButton.interactable = value;
         }
 
+        private void SetButtonsVisible(bool value)
+        {
+            if (_startButton != null) _startButton.gameObject.SetActive(value);
+            if (_trainingButton != null) _trainingButton.gameObject.SetActive(value);
+            if (_exitButton != null) _exitButton.gameObject.SetActive(value);
+        }
+
+        private void SetBackgroundVisible(bool value)
+        {
+            if (_backgroundImage != null)
+                _backgroundImage.enabled = value;
+        }
+
         private Button CreateMenuButton(string name, string label, Vector2 anchoredPos)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -317,7 +349,7 @@ namespace SoccerBot
 
         private void BuildTrainingPlaceholder()
         {
-            var panel = new GameObject("TrainingPlaceholder", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+            var panel = new GameObject("TrainingPlaceholder", typeof(RectTransform), typeof(CanvasGroup));
             panel.transform.SetParent(transform, false);
 
             var rt = panel.GetComponent<RectTransform>();
@@ -326,17 +358,28 @@ namespace SoccerBot
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
 
-            var image = panel.GetComponent<Image>();
-            image.color = new Color(0f, 0f, 0f, 0.92f);
-
             _trainingCanvasGroup = panel.GetComponent<CanvasGroup>();
 
-            CreateLabel(panel.transform, "TRAINING MODE", 44f, FontStyles.Bold, new Vector2(0f, 150f));
-            CreateLabel(panel.transform,
-                "Reserved for smart football VR linkage.\nA goal frame is placed in the scene for the future demo.",
-                24f, FontStyles.Normal, new Vector2(0f, 30f), new Vector2(900f, 140f));
+            var infoCard = new GameObject("TrainingInfoCard", typeof(RectTransform), typeof(Image));
+            infoCard.transform.SetParent(panel.transform, false);
 
-            _trainingBackButton = CreatePanelButton(panel.transform, "BackButton", "BACK TO MENU", new Vector2(0f, -140f));
+            var cardRt = infoCard.GetComponent<RectTransform>();
+            cardRt.anchorMin = new Vector2(1f, 1f);
+            cardRt.anchorMax = new Vector2(1f, 1f);
+            cardRt.pivot = new Vector2(1f, 1f);
+            cardRt.sizeDelta = new Vector2(520f, 360f);
+            cardRt.anchoredPosition = new Vector2(-48f, -48f);
+
+            var cardImage = infoCard.GetComponent<Image>();
+            cardImage.color = new Color(0f, 0f, 0f, 0.68f);
+
+            CreateLabel(infoCard.transform, "TRAINING MODE", 34f, FontStyles.Bold, new Vector2(0f, 118f), new Vector2(440f, 56f));
+            _trainingStatusLabel = CreateLabel(infoCard.transform,
+                "Smart football mock stream is preparing...",
+                22f, FontStyles.Normal, new Vector2(0f, 8f), new Vector2(440f, 180f));
+
+            _trainingBackButton = CreatePanelButton(infoCard.transform, "BackButton", "BACK TO MENU", new Vector2(0f, -118f));
+            EnsureTrainingModeController();
         }
 
         private Button CreatePanelButton(Transform parent, string name, string label, Vector2 anchoredPos)
@@ -348,17 +391,17 @@ namespace SoccerBot
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(380f, 64f);
+            rt.sizeDelta = new Vector2(320f, 56f);
             rt.anchoredPosition = anchoredPos;
 
             var image = go.GetComponent<Image>();
             image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
 
-            CreateLabel(go.transform, label, 28f, FontStyles.Bold);
+            CreateLabel(go.transform, label, 24f, FontStyles.Bold, Vector2.zero, new Vector2(300f, 48f));
             return go.GetComponent<Button>();
         }
 
-        private void CreateLabel(Transform parent, string text, float fontSize, FontStyles fontStyle,
+        private TextMeshProUGUI CreateLabel(Transform parent, string text, float fontSize, FontStyles fontStyle,
             Vector2? anchoredPos = null, Vector2? size = null)
         {
             var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -378,6 +421,20 @@ namespace SoccerBot
             tmp.color = Color.white;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.enableWordWrapping = true;
+            return tmp;
+        }
+
+        private void EnsureTrainingModeController()
+        {
+            if (_trainingModeController == null)
+            {
+                var controllerGo = GameObject.Find("TrainingModeController");
+                if (controllerGo == null)
+                    controllerGo = new GameObject("TrainingModeController");
+                _trainingModeController = controllerGo.GetComponent<TrainingModeController>() ?? controllerGo.AddComponent<TrainingModeController>();
+            }
+
+            _trainingModeController.Configure(_trainingCanvasGroup, _trainingGoalFrame, _trainingStatusLabel, this);
         }
 
         private static RectTransform EnsureRectTransform(GameObject go)
