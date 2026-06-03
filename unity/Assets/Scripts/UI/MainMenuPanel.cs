@@ -1,12 +1,8 @@
-// MainMenuPanel.cs — Full-screen black main menu shown on app launch.
-// Three buttons: START (→ IntroManager.BeginIntro), HOW TO PLAY (→ HowToPlayPanel), EXIT.
-// World Space Canvas so Quest XR Ray Interactor can click buttons via ray casting.
-// Manages its own menu BGM via an independent AudioSource (does not touch AudioManager).
-
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
+using Random = UnityEngine.Random;
 
 namespace SoccerBot
 {
@@ -15,9 +11,13 @@ namespace SoccerBot
         [Header("UI References")]
         [SerializeField] private CanvasGroup _canvasGroup;
         [SerializeField] private Button _startButton;
-        [SerializeField] private Button _howToPlayButton;
+        [SerializeField] private Button _trainingButton;
         [SerializeField] private Button _exitButton;
-        [SerializeField] private HowToPlayPanel _howToPlayPanel;
+
+        [Header("Training Placeholder")]
+        [SerializeField] private CanvasGroup _trainingCanvasGroup;
+        [SerializeField] private Button _trainingBackButton;
+        [SerializeField] private GameObject _trainingGoalFrame;
 
         [Header("Flow")]
         [SerializeField] private IntroManager _introManager;
@@ -28,42 +28,149 @@ namespace SoccerBot
         [SerializeField, Range(0f, 1f)] private float _bgmVolume = 0.6f;
         [SerializeField] private float _bgmFadeOutTime = 0.8f;
 
+        [Header("Menu SFX")]
+        [SerializeField] private AudioSource _uiSfxSource;
+        [SerializeField, Range(0f, 1f)] private float _clickVolume = 0.2f;
+
         [Header("Timing")]
-        [SerializeField] private float _fadeInTime  = 0.6f;
+        [SerializeField] private float _fadeInTime = 0.6f;
         [SerializeField] private float _fadeOutTime = 0.5f;
+
+        private bool _isBuilt;
 
         void Awake()
         {
-            if (_canvasGroup == null) _canvasGroup = GetComponent<CanvasGroup>();
-            _canvasGroup.alpha = 0f;
-            _canvasGroup.interactable = false;
-            _canvasGroup.blocksRaycasts = false;
+            AutoResolveRefs();
+            EnsureRuntimeUi();
+            HideTrainingImmediate();
+            SetMenuAlpha(0f, false);
         }
 
         void Start()
         {
             AutoResolveRefs();
-
-            if (_startButton    != null) _startButton.onClick.AddListener(OnStartClicked);
-            if (_howToPlayButton != null) _howToPlayButton.onClick.AddListener(OnHowToPlayClicked);
-            if (_exitButton     != null) _exitButton.onClick.AddListener(OnExitClicked);
-
-            StartCoroutine(FadeIn());
-            PlayBGM();
+            BindButtons();
+            ShowMenu();
         }
 
         private void AutoResolveRefs()
         {
             if (_introManager == null)
                 _introManager = FindFirstObjectByType<IntroManager>(FindObjectsInactive.Include);
-            if (_howToPlayPanel == null)
-                _howToPlayPanel = FindFirstObjectByType<HowToPlayPanel>(FindObjectsInactive.Include);
+
             if (_bgmSource == null)
             {
-                _bgmSource = gameObject.AddComponent<AudioSource>();
+                _bgmSource = gameObject.GetComponent<AudioSource>();
+                if (_bgmSource == null) _bgmSource = gameObject.AddComponent<AudioSource>();
                 _bgmSource.playOnAwake = false;
                 _bgmSource.loop = true;
                 _bgmSource.spatialBlend = 0f;
+            }
+
+            if (_uiSfxSource == null)
+            {
+                _uiSfxSource = gameObject.AddComponent<AudioSource>();
+                _uiSfxSource.playOnAwake = false;
+                _uiSfxSource.loop = false;
+                _uiSfxSource.spatialBlend = 0f;
+                _uiSfxSource.volume = _clickVolume;
+            }
+        }
+
+        private void EnsureRuntimeUi()
+        {
+            if (_isBuilt) return;
+
+            Canvas canvas = GetComponent<Canvas>();
+            if (canvas == null) canvas = gameObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 200;
+
+            if (GetComponent<CanvasScaler>() == null)
+            {
+                var scaler = gameObject.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920f, 1080f);
+                scaler.matchWidthOrHeight = 0.5f;
+            }
+
+            if (GetComponent<GraphicRaycaster>() == null)
+                gameObject.AddComponent<GraphicRaycaster>();
+
+            var background = gameObject.GetComponent<Image>();
+            if (background == null) background = gameObject.AddComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.88f);
+
+            if (_canvasGroup == null)
+                _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+
+            var root = EnsureRectTransform(gameObject);
+            root.anchorMin = Vector2.zero;
+            root.anchorMax = Vector2.one;
+            root.offsetMin = Vector2.zero;
+            root.offsetMax = Vector2.zero;
+
+            if (_startButton == null) _startButton = CreateMenuButton("StartButton", "START", new Vector2(0f, 90f));
+            if (_trainingButton == null) _trainingButton = CreateMenuButton("TrainingButton", "TRAINING", new Vector2(0f, 0f));
+            if (_exitButton == null) _exitButton = CreateMenuButton("ExitButton", "EXIT", new Vector2(0f, -90f));
+
+            if (_trainingCanvasGroup == null || _trainingBackButton == null)
+                BuildTrainingPlaceholder();
+
+            if (_trainingGoalFrame == null)
+                _trainingGoalFrame = BuildTrainingGoalFrame();
+
+            _isBuilt = true;
+        }
+
+        private void BindButtons()
+        {
+            BindButton(_startButton, OnStartClicked);
+            BindButton(_trainingButton, OnTrainingClicked);
+            BindButton(_exitButton, OnExitClicked);
+            BindButton(_trainingBackButton, OnTrainingBackClicked);
+        }
+
+        private void BindButton(Button button, UnityEngine.Events.UnityAction action)
+        {
+            if (button == null) return;
+            button.onClick.RemoveListener(action);
+            button.onClick.AddListener(action);
+        }
+
+        public void ShowMenu()
+        {
+            gameObject.SetActive(true);
+            HideTrainingImmediate();
+            StopAllCoroutines();
+            StartCoroutine(FadeInMenu());
+            PlayBGM();
+        }
+
+        public void ShowTrainingPlaceholder()
+        {
+            StopAllCoroutines();
+            SetMenuAlpha(0f, false);
+            if (_trainingGoalFrame != null) _trainingGoalFrame.SetActive(true);
+            if (_trainingCanvasGroup != null)
+            {
+                _trainingCanvasGroup.gameObject.SetActive(true);
+                _trainingCanvasGroup.alpha = 1f;
+                _trainingCanvasGroup.interactable = true;
+                _trainingCanvasGroup.blocksRaycasts = true;
+            }
+            if (_trainingBackButton != null) _trainingBackButton.interactable = true;
+        }
+
+        public void HideTrainingImmediate()
+        {
+            if (_trainingGoalFrame != null) _trainingGoalFrame.SetActive(false);
+            if (_trainingCanvasGroup != null)
+            {
+                _trainingCanvasGroup.alpha = 0f;
+                _trainingCanvasGroup.interactable = false;
+                _trainingCanvasGroup.blocksRaycasts = false;
+                _trainingCanvasGroup.gameObject.SetActive(false);
             }
         }
 
@@ -72,21 +179,38 @@ namespace SoccerBot
             if (_bgmSource == null || _menuBGM == null) return;
             _bgmSource.clip = _menuBGM;
             _bgmSource.volume = _bgmVolume;
-            _bgmSource.Play();
+            if (!_bgmSource.isPlaying) _bgmSource.Play();
+        }
+
+        private void PlayClick()
+        {
+            if (_uiSfxSource == null) return;
+            _uiSfxSource.volume = _clickVolume;
+            _uiSfxSource.PlayOneShot(CreateClickClip(), 1f);
         }
 
         private void OnStartClicked()
         {
+            PlayClick();
             StartCoroutine(StartSequence());
         }
 
-        private void OnHowToPlayClicked()
+        private void OnTrainingClicked()
         {
-            if (_howToPlayPanel != null) _howToPlayPanel.Show();
+            PlayClick();
+            StartCoroutine(TrainingSequence());
+        }
+
+        private void OnTrainingBackClicked()
+        {
+            PlayClick();
+            HideTrainingImmediate();
+            ShowMenu();
         }
 
         private void OnExitClicked()
         {
+            PlayClick();
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -96,65 +220,219 @@ namespace SoccerBot
 
         private IEnumerator StartSequence()
         {
-            // Disable buttons immediately to prevent double-click.
             SetButtonsInteractable(false);
-
-            // Fade out menu and BGM in parallel.
             StartCoroutine(FadeBGMOut());
-            yield return FadeOut();
-
+            yield return FadeOutMenu();
+            HideTrainingImmediate();
+            _introManager?.BeginMatchFromMenu();
             gameObject.SetActive(false);
-
-            // MainMenuPanel is disabled — no-op until re-enabled
         }
 
-        private IEnumerator FadeIn()
+        private IEnumerator TrainingSequence()
         {
+            SetButtonsInteractable(false);
+            StartCoroutine(FadeBGMOut());
+            yield return FadeOutMenu();
+            ShowTrainingPlaceholder();
+        }
+
+        private IEnumerator FadeInMenu()
+        {
+            SetButtonsInteractable(false);
             float t = 0f;
             while (t < _fadeInTime)
             {
                 t += Time.unscaledDeltaTime;
-                _canvasGroup.alpha = Mathf.Clamp01(t / _fadeInTime);
+                SetMenuAlpha(Mathf.Clamp01(t / _fadeInTime), false);
                 yield return null;
             }
-            _canvasGroup.alpha = 1f;
-            _canvasGroup.interactable = true;
-            _canvasGroup.blocksRaycasts = true;
+            SetMenuAlpha(1f, true);
+            SetButtonsInteractable(true);
         }
 
-        private IEnumerator FadeOut()
+        private IEnumerator FadeOutMenu()
         {
-            _canvasGroup.interactable = false;
-            _canvasGroup.blocksRaycasts = false;
+            SetMenuAlpha(_canvasGroup != null ? _canvasGroup.alpha : 1f, false);
+            float startAlpha = _canvasGroup != null ? _canvasGroup.alpha : 1f;
             float t = 0f;
             while (t < _fadeOutTime)
             {
                 t += Time.unscaledDeltaTime;
-                _canvasGroup.alpha = Mathf.Clamp01(1f - t / _fadeOutTime);
+                float alpha = Mathf.Lerp(startAlpha, 0f, Mathf.Clamp01(t / _fadeOutTime));
+                SetMenuAlpha(alpha, false);
                 yield return null;
             }
-            _canvasGroup.alpha = 0f;
+            SetMenuAlpha(0f, false);
+        }
+
+        private void SetMenuAlpha(float alpha, bool interactive)
+        {
+            if (_canvasGroup == null) return;
+            _canvasGroup.alpha = alpha;
+            _canvasGroup.interactable = interactive;
+            _canvasGroup.blocksRaycasts = interactive;
         }
 
         private IEnumerator FadeBGMOut()
         {
-            if (_bgmSource == null) yield break;
+            if (_bgmSource == null || !_bgmSource.isPlaying) yield break;
             float startVol = _bgmSource.volume;
             float t = 0f;
             while (t < _bgmFadeOutTime)
             {
                 t += Time.unscaledDeltaTime;
-                _bgmSource.volume = Mathf.Lerp(startVol, 0f, t / _bgmFadeOutTime);
+                _bgmSource.volume = Mathf.Lerp(startVol, 0f, Mathf.Clamp01(t / _bgmFadeOutTime));
                 yield return null;
             }
             _bgmSource.Stop();
+            _bgmSource.volume = _bgmVolume;
         }
 
         private void SetButtonsInteractable(bool value)
         {
-            if (_startButton     != null) _startButton.interactable     = value;
-            if (_howToPlayButton != null) _howToPlayButton.interactable = value;
-            if (_exitButton      != null) _exitButton.interactable      = value;
+            if (_startButton != null) _startButton.interactable = value;
+            if (_trainingButton != null) _trainingButton.interactable = value;
+            if (_exitButton != null) _exitButton.interactable = value;
+            if (_trainingBackButton != null) _trainingBackButton.interactable = value;
+        }
+
+        private Button CreateMenuButton(string name, string label, Vector2 anchoredPos)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(transform, false);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(420f, 72f);
+            rt.anchoredPosition = anchoredPos;
+
+            var image = go.GetComponent<Image>();
+            image.color = new Color(0.08f, 0.08f, 0.08f, 0.88f);
+
+            CreateLabel(go.transform, label, 32f, FontStyles.Bold);
+            return go.GetComponent<Button>();
+        }
+
+        private void BuildTrainingPlaceholder()
+        {
+            var panel = new GameObject("TrainingPlaceholder", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+            panel.transform.SetParent(transform, false);
+
+            var rt = panel.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            var image = panel.GetComponent<Image>();
+            image.color = new Color(0f, 0f, 0f, 0.92f);
+
+            _trainingCanvasGroup = panel.GetComponent<CanvasGroup>();
+
+            CreateLabel(panel.transform, "TRAINING MODE", 44f, FontStyles.Bold, new Vector2(0f, 150f));
+            CreateLabel(panel.transform,
+                "Reserved for smart football VR linkage.\nA goal frame is placed in the scene for the future demo.",
+                24f, FontStyles.Normal, new Vector2(0f, 30f), new Vector2(900f, 140f));
+
+            _trainingBackButton = CreatePanelButton(panel.transform, "BackButton", "BACK TO MENU", new Vector2(0f, -140f));
+        }
+
+        private Button CreatePanelButton(Transform parent, string name, string label, Vector2 anchoredPos)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(parent, false);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(380f, 64f);
+            rt.anchoredPosition = anchoredPos;
+
+            var image = go.GetComponent<Image>();
+            image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
+
+            CreateLabel(go.transform, label, 28f, FontStyles.Bold);
+            return go.GetComponent<Button>();
+        }
+
+        private void CreateLabel(Transform parent, string text, float fontSize, FontStyles fontStyle,
+            Vector2? anchoredPos = null, Vector2? size = null)
+        {
+            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelGo.transform.SetParent(parent, false);
+
+            var rt = labelGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = size ?? new Vector2(420f, 72f);
+            rt.anchoredPosition = anchoredPos ?? Vector2.zero;
+
+            var tmp = labelGo.GetComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = fontSize;
+            tmp.fontStyle = fontStyle;
+            tmp.color = Color.white;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.enableWordWrapping = true;
+        }
+
+        private static RectTransform EnsureRectTransform(GameObject go)
+        {
+            return go.GetComponent<RectTransform>() ?? go.AddComponent<RectTransform>();
+        }
+
+        private GameObject BuildTrainingGoalFrame()
+        {
+            var root = new GameObject("TrainingGoalFrame");
+            root.transform.position = new Vector3(0f, 1.2f, -8.8f);
+
+            CreateGoalBar(root.transform, "LeftPost", new Vector3(-2f, 1.2f, 0f), new Vector3(0.12f, 2.4f, 0.12f));
+            CreateGoalBar(root.transform, "RightPost", new Vector3(2f, 1.2f, 0f), new Vector3(0.12f, 2.4f, 0.12f));
+            CreateGoalBar(root.transform, "Crossbar", new Vector3(0f, 2.4f, 0f), new Vector3(4.12f, 0.12f, 0.12f));
+            root.SetActive(false);
+            return root;
+        }
+
+        private void CreateGoalBar(Transform parent, string name, Vector3 localPos, Vector3 localScale)
+        {
+            var bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bar.name = name;
+            bar.transform.SetParent(parent, false);
+            bar.transform.localPosition = localPos;
+            bar.transform.localScale = localScale;
+
+            var renderer = bar.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                renderer.material.color = Color.white;
+            }
+        }
+
+        private AudioClip CreateClickClip()
+        {
+            const int sampleRate = 44100;
+            const float duration = 0.05f;
+            int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+            float[] samples = new float[sampleCount];
+
+            float phase = Random.Range(0f, Mathf.PI * 2f);
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float t = i / (float)sampleRate;
+                float envelope = Mathf.Exp(-45f * t);
+                float freq = Mathf.Lerp(1500f, 700f, t / duration);
+                phase += 2f * Mathf.PI * freq / sampleRate;
+                samples[i] = Mathf.Sin(phase) * envelope * 0.25f;
+            }
+
+            var clip = AudioClip.Create("menu-click", sampleCount, 1, sampleRate, false);
+            clip.SetData(samples, 0);
+            return clip;
         }
     }
 }

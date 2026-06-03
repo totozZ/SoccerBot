@@ -323,7 +323,8 @@
       "Bash(curl -s http://127.0.0.1:8090/health)",
       "Bash(curl -s \"http://localhost:8090/skills?category=Perception\")",
       "Bash(git revert *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(apply_patch)"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"

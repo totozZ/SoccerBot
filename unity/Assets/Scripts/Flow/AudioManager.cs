@@ -62,9 +62,6 @@ namespace SoccerBot
 
             EnsureSources();
             _activeBgm = _bgmA;
-
-            // Start with intro BGM if available
-            PlayBGM(_introBGM, instant: true);
         }
 
         void Update()

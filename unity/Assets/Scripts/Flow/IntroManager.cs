@@ -1,16 +1,15 @@
-using System.Collections;
+using System;
 using UnityEngine;
 
 namespace SoccerBot
 {
-    // Drives the intro sequence: show IntroPanel, then hand off to MatchFlowController.
-    // Add this to the same GameObject as MatchFlowController (or any persistent GO).
-    // Wire _introPanel in Inspector, or it will be found automatically.
     public class IntroManager : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private IntroPanel _introPanel;
         [SerializeField] private MatchFlowController _matchFlow;
+        [SerializeField] private MainMenuPanel _mainMenu;
+        [SerializeField] private AudioManager _audioManager;
 
         [Header("Scenario Text (edit per demo)")]
         [SerializeField] private string _line1 = "2014 FIFA World Cup Final";
@@ -18,40 +17,79 @@ namespace SoccerBot
         [SerializeField] private string _line3 = "The ball is at your feet.  Make history.";
 
         [Header("Behaviour")]
-        [Tooltip("If true, skip intro and go straight to match (useful during dev).")]
+        [Tooltip("If true, skip intro and go straight to match once START is pressed.")]
         [SerializeField] private bool _skipIntro = false;
+
+        private bool _isMatchStarting;
 
         void Start()
         {
             if (_introPanel == null)
                 _introPanel = FindFirstObjectByType<IntroPanel>(FindObjectsInactive.Include);
             if (_matchFlow == null)
-                _matchFlow = FindFirstObjectByType<MatchFlowController>();
+                _matchFlow = FindFirstObjectByType<MatchFlowController>(FindObjectsInactive.Include);
+            if (_mainMenu == null)
+                _mainMenu = FindFirstObjectByType<MainMenuPanel>(FindObjectsInactive.Include);
+            if (_audioManager == null)
+                _audioManager = FindFirstObjectByType<AudioManager>(FindObjectsInactive.Include);
 
-            // Pause match loop until intro finishes
-            if (_matchFlow != null) _matchFlow.enabled = false;
+            if (_matchFlow != null)
+            {
+                _matchFlow.ResetForMenu();
+                _matchFlow.OnMatchFinished -= HandleMatchFinished;
+                _matchFlow.OnMatchFinished += HandleMatchFinished;
+            }
 
-            if (_skipIntro)
+            if (_introPanel != null)
+            {
+                _introPanel.OnIntroDone -= StartMatch;
+                _introPanel.gameObject.SetActive(false);
+            }
+
+            if (_mainMenu == null)
+            {
+                var menuGo = new GameObject("MainMenu");
+                _mainMenu = menuGo.AddComponent<MainMenuPanel>();
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (_introPanel != null) _introPanel.OnIntroDone -= StartMatch;
+            if (_matchFlow != null) _matchFlow.OnMatchFinished -= HandleMatchFinished;
+        }
+
+        public void BeginMatchFromMenu()
+        {
+            if (_isMatchStarting) return;
+            _isMatchStarting = true;
+
+            if (_matchFlow != null)
+                _matchFlow.PrepareForMatchStart();
+
+            if (_skipIntro || _introPanel == null)
             {
                 StartMatch();
                 return;
             }
 
-            if (_introPanel != null)
-            {
-                _introPanel.OnIntroDone += StartMatch;
-                _introPanel.Show(_line1, _line2, _line3);
-            }
-            else
-            {
-                StartMatch();
-            }
+            _introPanel.OnIntroDone -= StartMatch;
+            _introPanel.OnIntroDone += StartMatch;
+            _introPanel.Show(_line1, _line2, _line3);
         }
 
         private void StartMatch()
         {
             if (_introPanel != null) _introPanel.OnIntroDone -= StartMatch;
-            if (_matchFlow != null) _matchFlow.enabled = true;
+            if (_audioManager != null) _audioManager.StopBGM();
+            if (_matchFlow != null) _matchFlow.BeginMatch();
+            _isMatchStarting = false;
+        }
+
+        private void HandleMatchFinished()
+        {
+            if (_audioManager != null) _audioManager.StopBGM();
+            if (_mainMenu != null) _mainMenu.ShowMenu();
         }
     }
 }

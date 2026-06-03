@@ -91,6 +91,13 @@ namespace SoccerBot
             StartCoroutine(ShowRoutine(s));
         }
 
+        public void HideImmediate()
+        {
+            StopAllCoroutines();
+            transform.localScale = Vector3.one;
+            if (_canvasGroup != null) _canvasGroup.alpha = 0f;
+        }
+
         private IEnumerator ShowRoutine(Scenario s)
         {
             SetText(_scenarioNameText, s.scenarioName);
