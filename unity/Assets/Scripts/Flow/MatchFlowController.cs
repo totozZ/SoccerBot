@@ -95,6 +95,7 @@ namespace SoccerBot
         [Tooltip("Wire ShotMissed.asset — used as data carrier for ScorePanel when player misses.")]
         [SerializeField] private Scenario _shotMissedData;
         [SerializeField] private ScorePanel _scorePanel;
+        [SerializeField] private ScoreBoard _scoreBoard;
 
         public Phase CurrentPhase { get; private set; } = Phase.Idle;
 
@@ -179,6 +180,7 @@ namespace SoccerBot
                 if (go != null) _goalTargetMiss = go.transform;
             }
             if (_scorePanel == null) _scorePanel = FindFirstObjectByType<ScorePanel>();
+            if (_scoreBoard == null) _scoreBoard = FindFirstObjectByType<ScoreBoard>();
         }
 
         private void PlayWhistle()
@@ -434,6 +436,7 @@ namespace SoccerBot
             // ─ Phase 4: pause, then show score and resolve ─
             yield return new WaitForSeconds(_resultHoldDelay);
             if (_scorePanel != null && panelData != null) _scorePanel.Show(panelData);
+            if (_scoreBoard != null && panelData != null) _scoreBoard.Record(panelData.outcome);
 
             // Teammate celebration bounce on Score outcome.
             if (_teammateCelebrates && panelData != null && panelData.outcome == ScenarioOutcome.Score

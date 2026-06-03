@@ -62,5 +62,16 @@ namespace SoccerBot
             _goals = _missed = _intercepted = 0;
             Refresh();
         }
+
+        public void Record(ScenarioOutcome outcome)
+        {
+            switch (outcome)
+            {
+                case ScenarioOutcome.Score:       _goals++;       break;
+                case ScenarioOutcome.Missed:      _missed++;      break;
+                case ScenarioOutcome.Intercepted: _intercepted++; break;
+            }
+            Refresh();
+        }
     }
 }

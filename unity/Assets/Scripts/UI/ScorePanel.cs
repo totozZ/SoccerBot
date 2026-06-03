@@ -9,6 +9,7 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace SoccerBot
 {
@@ -33,6 +34,44 @@ namespace SoccerBot
         [SerializeField] private Color _interceptedColor = new Color(0.95f, 0.3f, 0.3f);
         [SerializeField] private Color _missedColor      = new Color(0.95f, 0.75f, 0.2f);
 
+        [Header("Score Text Pools")]
+        [Tooltip("Random text for finalScore <= 30")]
+        [SerializeField] private string[] _scoreTexts30 = new string[]
+        {
+            "MISSED THE MOMENT!",
+            "BAD TIMING!",
+            "OFF TARGET!",
+            "NOT QUITE!",
+            "MISSED IT!",
+            "POOR TIMING!",
+            "NEEDS WORK!",
+            "TRY AGAIN!"
+        };
+
+        [Tooltip("Random text for finalScore <= 50")]
+        [SerializeField] private string[] _scoreTexts50 = new string[]
+        {
+            "CLOSE ONE!",
+            "ALMOST!",
+            "SO CLOSE!",
+            "JUST MISSED!",
+            "NEARLY THERE!",
+            "OFF BY A MOMENT!",
+            "BETTER LUCK NEXT TIME!"
+        };
+
+        [Tooltip("Random text for finalScore > 50")]
+        [SerializeField] private string[] _scoreTexts100 = new string[]
+        {
+            "PERFECT SHOT!",
+            "BULLSEYE!",
+            "TOP CORNER!",
+            "WORLD CLASS!",
+            "UNSTOPPABLE!",
+            "WHAT A GOAL!",
+            "CLINICAL FINISH!"
+        };
+
         void Start()
         {
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
@@ -55,7 +94,7 @@ namespace SoccerBot
         private IEnumerator ShowRoutine(Scenario s)
         {
             SetText(_scenarioNameText, s.scenarioName);
-            SetText(_scoreText, $"{s.finalScore}");
+            SetText(_scoreText, GetRandomScoreText(s.finalScore));
             SetText(_outcomeText, OutcomeLabel(s.outcome));
             SetText(_flavorText, s.flavorText);
 
@@ -114,5 +153,17 @@ namespace SoccerBot
 
         private static void SetText(TMP_Text t, string v) { if (t != null) t.text = v; }
         private static void ApplyColor(TMP_Text t, Color c) { if (t != null) t.color = c; }
+
+        private string GetRandomScoreText(int finalScore)
+        {
+            string[] pool = finalScore switch
+            {
+                <= 30 => _scoreTexts30,
+                <= 50 => _scoreTexts50,
+                _     => _scoreTexts100
+            };
+            if (pool == null || pool.Length == 0) return finalScore.ToString();
+            return pool[Random.Range(0, pool.Length)];
+        }
     }
 }
