@@ -20,10 +20,11 @@
 - [x] **P8** Quest 3S APK 构建 + 部署（已成功 sideload 启动，A 键意外可触发射门）
 - [ ] **P9** 性能优化 — 目标：Quest 稳定 72fps / Draw Call < 200 / APK < 150MB
 - [ ] **P10** 演示视频拍摄 + 剪辑 — 分镜脚本 / 旁白文案 / VR 内录屏
+- [ ] **P11** 智能足球 (BS-BT91) 训练模式 — BLE IMU 真球 → Unity 数字孪生旋转 + VR 场地内可见
 
 ---
 
-> 版本: v6.9.0 | 日期: 2026-05-31 | 状态: P7.2 VR 完整版 + P7.5 四个 bug 已修复；进入美术/演示/功能优化阶段
+> 版本: v7.0.0-plan | 日期: 2026-06-03 | 状态: P1–P8 完成；P11 智能足球方案已出，待实施
 > 参赛: **互联网+ 大学生创新创业大赛 · 萌芽赛道**
 
 ---
@@ -631,6 +632,111 @@ SoccerBot/
 
 - **P9 性能优化** 穿插进行，先跑 Quest Profiler 看瓶颈
 - **P10 演示视频** 等 VR 输入跑通后录屏
+
+---
+
+## P11 — 智能足球训练模式（BS-BT91 BLE IMU）
+
+> **目标**：将包裹了 3D 打印足球外壳的 BS-BT91 九轴 IMU 模块接入 Unity，在 VR 训练模式中实时显示足球的数字孪生（旋转同步）。
+>
+> BS-BT91 是一款 BLE 5.0 无线九轴姿态传感器（陀螺仪 + 加速度计 + 磁力计），内置卡尔曼滤波，输出欧拉角 / 四元数 / 加速度 / 角速度，数据率默认 10Hz（最高 200Hz），空旷传输距离 90m。模块重量约 9g，非常适合同步封装在 3D 打印足球壳内。
+
+### 核心挑战
+
+| 挑战 | 说明 |
+|------|------|
+| **IMU 无位置信息** | IMU 只能输出**姿态（旋转）**，不能输出空间位置。位置跟踪需要 UWB/视觉等外部系统（不在本期范围） |
+| **BLE 跨平台** | Quest (Android) 可用 Java BLE API；PC (Windows) 需要 WinRT BLE 或中转方案 |
+| **蓝牙协议细节缺失** | 本地资料只有产品规格书，具体数据帧格式在语雀外链页面 `cm730dbi9gggsged`，需要单独获取或通过上位机逆向 |
+
+### 分阶段实施计划
+
+```
+P11.1  3D 足球模型 + Prefab
+       ├─ 找/做一个足球 3D 模型（FBX/OBJ）
+       ├─ 贴图：经典黑白五边形纹理
+       └─ 做成 SmartBall.prefab，放到 Resources/
+
+P11.2  数据模型 + Mock 驱动（可 PC 独立调试）
+       ├─ SmartBallData.cs：封装欧拉角 / 四元数 / 加速度
+       ├─ ISmartBallSource 接口（同 IDataSource 模式）
+       ├─ MockSmartBallSource：键盘/鼠标旋转球（PC 调试用）
+       └─ SmartBallController.cs：每帧从 Source 取姿态 → transform.rotation
+
+P11.3  训练模式场景集成
+       ├─ 在 Training Placeholder 场景中实例化 SmartBall
+       ├─ 球放在球场中央（如点球点位置）
+       ├─ PC 端：Mock 模式下用鼠标拖拽旋转球
+       └─ 添加 BLE 连接状态 UI（搜索中 / 已连接 / 信号强度）
+
+P11.4  Android BLE 插件（Quest 端真机联调）
+       ├─ Unity Android BLE Plugin（或手写 .aar）
+       ├─ 扫描 BS-BT91 设备（按名称/服务 UUID 过滤）
+       ├─ 连接 → 订阅 Notify Characteristic → 接收数据帧
+       └─ 数据帧解析器（按 BS-BT91 协议格式）
+
+P11.5  VR 内展示打磨
+       ├─ 球的大小匹配真实足球（直径 ~22cm）
+       ├─ 旋转平滑滤波（减少 IMU 抖动）
+       ├─ 可选：球拖尾特效（同现有 TrajectoryRenderer）
+       └─ 可选：踢球检测（加速度突变 → 触发事件）
+```
+
+### 架构图
+
+```
+┌──────────────────────────────────────────────────────┐
+│  真足球（3D 打印壳 + BS-BT91）                          │
+│  BLE 5.0 广播 → 欧拉角 / 四元数 / 加速度 (10Hz)        │
+└────────────────────┬─────────────────────────────────┘
+                     │
+         ┌───────────▼───────────┐
+         │  ISmartBallSource     │  同 IDataSource 模式
+         │  ├─ MockSmartBallSource│  PC 调试：鼠标拖拽
+         │  └─ BleSmartBallSource │  Quest：Android BLE
+         └───────────┬───────────┘
+                     │ SmartBallData { rotation, accel }
+                     ▼
+         ┌───────────────────────┐
+         │  SmartBallController  │  MonoBehaviour
+         │  transform.rotation = │  挂在 SmartBall.prefab
+         │    Quaternion.Slerp() │
+         └───────────┬───────────┘
+                     │
+         ┌───────────▼───────────┐
+         │  SmartBall GameObject │
+         │  ├─ MeshRenderer      │  足球 3D 模型
+         │  ├─ 拖尾特效 (可选)     │
+         │  └─ 踢球检测 (可选)     │
+         └───────────────────────┘
+```
+
+### 新增文件清单
+
+| 文件 | 路径 | 职责 |
+|------|------|------|
+| `SmartBallData.cs` | `Scripts/SmartBall/` | 数据结构：欧拉角、四元数、加速度、时间戳 |
+| `ISmartBallSource.cs` | `Scripts/SmartBall/` | 数据源接口 |
+| `MockSmartBallSource.cs` | `Scripts/SmartBall/` | PC 调试：鼠标拖拽旋转 + 键盘模拟 |
+| `BleSmartBallSource.cs` | `Scripts/SmartBall/` | Android BLE 连接 + 数据帧解析 |
+| `SmartBallController.cs` | `Scripts/SmartBall/` | 接收数据 → 驱动 Transform 旋转 |
+| `SmartBall.prefab` | `Assets/Prefabs/` | 足球 3D 模型预制体 |
+| `BlePlugin.aar` | `Assets/Plugins/Android/` | Android BLE 原生插件（可选第三方） |
+
+### 实施顺序建议
+
+1. **先 P11.1 + P11.2**：把足球模型放进场景，用 Mock 数据让球转起来。**30 分钟内可在 PC Editor 看到效果**。
+2. **再 P11.3**：挂到 Training 菜单入口，打通 UI 流程。
+3. **最后 P11.4**：需要 BS-BT91 真机 + 蓝牙协议文档。拿到数据帧格式后一个下午可完成。
+
+### 风险与应对
+
+| 风险 | 概率 | 应对 |
+|------|------|------|
+| BS-BT91 蓝牙协议文档缺失 | 中 | 用官方上位机抓 BLE 数据包逆向；或先用 Mock 模式演示 |
+| Android BLE 插件兼容性 | 低 | 用 Unity 官方 `AndroidJavaObject` 直接调 Android BLE API，不依赖第三方 |
+| IMU 抖动导致球旋转抽搐 | 中 | `Quaternion.Slerp` + 低通滤波平滑 |
+| 足球 3D 模型没有现成的 | 低 | Unity Asset Store 免费足球模型 / 用 Sphere + 贴图凑合 |
 
 ---
 
