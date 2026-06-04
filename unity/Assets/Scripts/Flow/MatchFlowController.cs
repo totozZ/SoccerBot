@@ -2,8 +2,10 @@
 
 using System;
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace SoccerBot
 {
@@ -48,8 +50,8 @@ namespace SoccerBot
         [Header("Teammate Shot Targets (world space)")]
         [SerializeField] private Transform _goalTargetIn;
         [SerializeField] private Transform _goalTargetMiss;
-        [SerializeField] private Vector3 _goalTargetInPos = new(0f, 0.8f, -9.5f);
-        [SerializeField] private Vector3 _goalTargetMissPos = new(3.5f, 0.5f, -9.5f);
+        [SerializeField] private Vector3 _goalTargetInPos = new(0f, 0.8f, 8.9f);
+        [SerializeField] private Vector3 _goalTargetMissPos = new(3.5f, 0.5f, 8.6f);
 
         [Header("Teammate Shot Animation")]
         [SerializeField] private float _shotPassToTeammate = 0.6f;
@@ -66,6 +68,28 @@ namespace SoccerBot
         [SerializeField, Range(1f, 10f)] private float _opponentLookSpeed = 4f;
         [SerializeField] private bool _teammateCelebrates = true;
 
+        [Header("Demo Scene Polish")]
+        [SerializeField] private bool _enableDemoScenePolish = true;
+        [SerializeField] private bool _replaceRobotWithTeammateVisual = true;
+        [SerializeField] private Vector3 _robotDemoPosition = new(-2.4f, 0f, -3.6f);
+        [SerializeField] private Vector3 _robotVisualLocalOffset = Vector3.zero;
+        [SerializeField] private Vector3 _robotVisualLocalScale = Vector3.one * 0.576f;
+        [SerializeField] private Vector3 _goalkeeperPosition = new(0f, 0f, 8.15f);
+        [SerializeField] private Vector3 _goalkeeperLookAt = new(0f, 0f, 2f);
+        [SerializeField] private Vector3[] _blueBackgroundNpcPositions =
+        {
+            new(-2.2f, 0f, 5.8f)
+        };
+        [SerializeField] private Vector3[] _redBackgroundNpcPositions =
+        {
+            new(2.4f, 0f, 6.9f)
+        };
+        [SerializeField] private float _supportNpcForwardDistance = 4.8f;
+        [SerializeField] private float _supportNpcBackDistance = 3.6f;
+        [SerializeField] private float _goalkeeperForwardDistance = 6.8f;
+        [SerializeField] private float _lampHeadRuntimeY = 0.223f;
+        [SerializeField] private Vector3 _goalkeeperGoalCenter = new(0f, 0.0055f, 8.15f);
+
         [Header("Whistle")]
         [SerializeField] private AudioSource _whistleSource;
 
@@ -79,10 +103,22 @@ namespace SoccerBot
         private bool _isMatchRunning;
         private InputAction _menuAction;
         private MainMenuPanel _mainMenu;
+        private Transform _goalkeeperTransform;
+        private Transform _attackArrowTransform;
+        private TextMeshPro _attackArrowLabel;
+        private Canvas _fallbackHudCanvas;
+        private TextMeshProUGUI _fallbackHudArrowLabel;
+        private TextMeshProUGUI _fallbackHudStatusLabel;
+        private readonly System.Collections.Generic.List<Transform> _backgroundNpcTransforms = new();
+        private static readonly Color BlueTeamColor = new(0.1f, 0.3f, 0.9f, 1f);
+        private static readonly Color RedTeamColor = new(0.9f, 0.1f, 0.1f, 1f);
 
         void Start()
         {
+            ApplyDemoOverrides();
             AutoResolveRefs();
+            EnsureFarGoalTargets();
+            EnsureDemoScenePolish();
 
             if (_player != null) _player.OnShoot += HandlePlayerShot;
             if (_scenarioPlayer != null) _scenarioPlayer.OnScenarioComplete += HandleScenarioComplete;
@@ -148,14 +184,19 @@ namespace SoccerBot
 
         void Update()
         {
-            if (_menuAction == null || !_menuAction.WasPressedThisFrame()) return;
-            if (_mainMenu == null) return;
-
-            bool menuOpen = _mainMenu.gameObject.activeSelf && _mainMenu.gameObject.activeInHierarchy;
-            if (menuOpen) return;
-
-            ResetForMenu();
-            _mainMenu.ShowMenu();
+            if (_menuAction == null || !_menuAction.WasPressedThisFrame())
+            {
+                UpdateAttackArrow();
+            }
+            else if (_mainMenu != null)
+            {
+                bool menuOpen = _mainMenu.gameObject.activeSelf && _mainMenu.gameObject.activeInHierarchy;
+                if (!menuOpen)
+                {
+                    ResetForMenu();
+                    _mainMenu.ShowMenu();
+                }
+            }
         }
 
         private void AutoResolveRefs()
@@ -196,6 +237,14 @@ namespace SoccerBot
                 var t = _playerTransform.Find("FpsAnchor");
                 if (t != null) _fpsAnchor = t;
             }
+            if (_teammateTransform != null)
+            {
+                _teammateSetupOffset = new Vector3(-2.2f, 0f, 2.6f);
+            }
+            if (_opponentTransform != null)
+            {
+                _opponentSetupOffset = new Vector3(2.0f, 0f, 3.2f);
+            }
             if (_fpsAnchor != null)
             {
                 var t = _fpsAnchor.Find("FpsCamera");
@@ -233,6 +282,376 @@ namespace SoccerBot
             _whistleSource.PlayOneShot(clip, 0.8f);
         }
 
+        private void ApplyDemoOverrides()
+        {
+            _goalTargetInPos = new Vector3(1.1f, 0.75f, 8.9f);
+            _goalTargetMissPos = new Vector3(3.8f, 0.5f, 8.6f);
+        }
+
+        private Vector3 GetAttackForward()
+        {
+            if (_playerTransform != null)
+            {
+                Vector3 forward = _playerTransform.forward;
+                forward.y = 0f;
+                if (forward.sqrMagnitude > 0.001f)
+                    return forward.normalized;
+            }
+
+            if (_playerTransform != null && _goalTargetIn != null)
+            {
+                Vector3 forward = _goalTargetIn.position - _playerTransform.position;
+                forward.y = 0f;
+                if (forward.sqrMagnitude > 0.001f)
+                    return forward.normalized;
+            }
+
+            return Vector3.forward;
+        }
+
+        private Vector3 GetAttackRight()
+        {
+            Vector3 forward = GetAttackForward();
+            return new Vector3(forward.z, 0f, -forward.x).normalized;
+        }
+
+        private void EnsureFarGoalTargets()
+        {
+            if (_goalTargetIn == null)
+            {
+                var go = new GameObject("GoalTarget_In");
+                go.transform.position = _goalTargetInPos;
+                _goalTargetIn = go.transform;
+            }
+            else
+            {
+                _goalTargetIn.position = _goalTargetInPos;
+            }
+
+            if (_goalTargetMiss == null)
+            {
+                var go = new GameObject("GoalTarget_Miss");
+                go.transform.position = _goalTargetMissPos;
+                _goalTargetMiss = go.transform;
+            }
+            else
+            {
+                _goalTargetMiss.position = _goalTargetMissPos;
+            }
+        }
+
+        private void EnsureDemoScenePolish()
+        {
+            if (!_enableDemoScenePolish) return;
+
+            EnsureRobotVisualSwap();
+            EnsureGoalkeeper();
+            EnsureBackgroundNpcs();
+            EnsureAttackArrow();
+            EnsureFallbackHud();
+            EnsureLampHeadHeight();
+        }
+
+        private void EnsureRobotVisualSwap()
+        {
+            if (!_replaceRobotWithTeammateVisual || _robotTransform == null) return;
+
+            _robotTransform.position = _robotDemoPosition;
+            _robotTransform.rotation = Quaternion.LookRotation(Vector3.forward);
+
+            var builder = _robotTransform.GetComponent<CharacterBuilder>();
+            if (builder != null) builder.enabled = false;
+
+            Transform existingModel = _robotTransform.Find("Model");
+            if (existingModel != null)
+            {
+                existingModel.localPosition = _robotVisualLocalOffset;
+                existingModel.localRotation = Quaternion.identity;
+                existingModel.localScale = _robotVisualLocalScale;
+                TintRenderers(existingModel.gameObject, BlueTeamColor);
+                return;
+            }
+
+            Transform sourceModel = FindVisualTemplate(_teammateTransform);
+            if (sourceModel == null) sourceModel = FindVisualTemplate(_opponentTransform);
+            if (sourceModel == null) return;
+
+            var model = Instantiate(sourceModel.gameObject, _robotTransform);
+            model.name = "Model";
+            model.transform.localPosition = _robotVisualLocalOffset;
+            model.transform.localRotation = Quaternion.identity;
+            model.transform.localScale = _robotVisualLocalScale;
+            TintRenderers(model, BlueTeamColor);
+        }
+
+        private void EnsureGoalkeeper()
+        {
+            Vector3 forward = GetAttackForward();
+            _goalkeeperPosition = _goalkeeperGoalCenter;
+            _goalkeeperLookAt = _goalkeeperGoalCenter - forward * 2f;
+            _goalkeeperLookAt.y = _goalkeeperGoalCenter.y;
+
+            var existing = GameObject.Find("Goalkeeper");
+            if (existing != null)
+            {
+                _goalkeeperTransform = existing.transform;
+            }
+            else if (_goalkeeperTransform == null)
+            {
+                _goalkeeperTransform = CreateNpcFromPrefab(
+                    "Goalkeeper",
+                    "strong man b",
+                    _goalkeeperPosition,
+                    RedTeamColor,
+                    new Vector3(0.64f, 0.64f, 0.64f));
+            }
+
+            if (_goalkeeperTransform == null) return;
+
+            _goalkeeperTransform.gameObject.SetActive(true);
+            _goalkeeperTransform.position = _goalkeeperPosition;
+            Vector3 toLook = _goalkeeperLookAt - _goalkeeperTransform.position;
+            toLook.y = 0f;
+            if (toLook.sqrMagnitude > 0.001f)
+                _goalkeeperTransform.rotation = Quaternion.LookRotation(toLook);
+        }
+
+        private void EnsureBackgroundNpcs()
+        {
+            if (_backgroundNpcTransforms.Count == 0)
+            {
+                SpawnBackgroundNpcSet("BlueSupport", "normal man a", _blueBackgroundNpcPositions, BlueTeamColor);
+                SpawnBackgroundNpcSet("RedSupport", "normal woman b", _redBackgroundNpcPositions, RedTeamColor);
+            }
+
+            Vector3 forward = GetAttackForward();
+            Vector3 right = GetAttackRight();
+            Vector3 center = (_playerTransform != null ? _playerTransform.position : Vector3.zero) - forward * _supportNpcBackDistance;
+            center.y = 0f;
+
+            for (int i = 0; i < _backgroundNpcTransforms.Count; i++)
+            {
+                Transform npc = _backgroundNpcTransforms[i];
+                if (npc == null) continue;
+
+                float side = i % 2 == 0 ? -1f : 1f;
+                float depth = i < 2 ? 0f : -1.2f;
+                npc.position = center + right * side * 2.6f + forward * depth;
+
+                Vector3 toLook = (_playerTransform != null ? _playerTransform.position : _goalkeeperLookAt) - npc.position;
+                toLook.y = 0f;
+                if (toLook.sqrMagnitude > 0.001f)
+                    npc.rotation = Quaternion.LookRotation(toLook);
+            }
+        }
+
+        private void SpawnBackgroundNpcSet(string prefix, string prefabName, Vector3[] positions, Color color)
+        {
+            if (positions == null) return;
+
+            for (int i = 0; i < positions.Length; i++)
+            {
+                var npc = CreateNpcFromPrefab(
+                    $"{prefix}_{i + 1}",
+                    prefabName,
+                    positions[i],
+                    color,
+                    new Vector3(0.72f, 0.72f, 0.72f));
+
+                if (npc == null) continue;
+
+                Vector3 toLook = _goalkeeperLookAt - npc.position;
+                toLook.y = 0f;
+                if (toLook.sqrMagnitude > 0.001f)
+                    npc.rotation = Quaternion.LookRotation(toLook);
+
+                _backgroundNpcTransforms.Add(npc);
+            }
+        }
+
+        private Transform CreateNpcFromPrefab(string objectName, string prefabName, Vector3 position, Color color, Vector3 scale)
+        {
+            var existing = GameObject.Find(objectName);
+            if (existing != null) return existing.transform;
+
+            Transform sourceModel = null;
+            bool useBlueSource = color == BlueTeamColor;
+
+            if (useBlueSource)
+            {
+                sourceModel = FindVisualTemplate(_teammateTransform);
+                if (sourceModel == null) sourceModel = FindVisualTemplate(_opponentTransform);
+            }
+            else
+            {
+                sourceModel = FindVisualTemplate(_opponentTransform);
+                if (sourceModel == null) sourceModel = FindVisualTemplate(_teammateTransform);
+            }
+
+            if (sourceModel == null) return null;
+
+            var root = new GameObject(objectName).transform;
+            root.position = position;
+            var model = Instantiate(sourceModel.gameObject, root);
+            model.name = "Model";
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = Quaternion.identity;
+            model.transform.localScale = scale;
+            TintRenderers(model, color);
+            return root;
+        }
+
+        private static void TintRenderers(GameObject root, Color color)
+        {
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>())
+            {
+                var block = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(block);
+                block.SetColor("_BaseColor", color);
+                renderer.SetPropertyBlock(block);
+            }
+        }
+
+        private static Transform FindVisualTemplate(Transform root)
+        {
+            if (root == null) return null;
+
+            var directModel = root.Find("Model");
+            if (directModel != null) return directModel;
+
+            foreach (Transform child in root)
+            {
+                if (child.GetComponentInChildren<Renderer>(true) != null)
+                    return child;
+            }
+
+            return root.GetComponentInChildren<Renderer>(true) != null ? root : null;
+        }
+
+        private void EnsureAttackArrow()
+        {
+            if (_attackArrowTransform != null) return;
+
+            var root = new GameObject("AttackDirectionArrow").transform;
+            _attackArrowTransform = root;
+            root.localScale = Vector3.one * 0.08f;
+
+            var label = root.gameObject.AddComponent<TextMeshPro>();
+            label.text = "→";
+            label.fontSize = 12f;
+            label.alignment = TextAlignmentOptions.Center;
+            label.color = new Color(1f, 0.82f, 0.12f, 1f);
+            label.outlineWidth = 0.25f;
+            label.enableWordWrapping = false;
+            _attackArrowLabel = label;
+
+            UpdateAttackArrow();
+        }
+
+        private void UpdateAttackArrow()
+        {
+            if (_playerTransform == null) return;
+
+            bool showHud = _isMatchRunning && CurrentPhase != Phase.Idle;
+            if (_fallbackHudCanvas != null)
+                _fallbackHudCanvas.gameObject.SetActive(showHud);
+            if (_attackArrowTransform != null)
+                _attackArrowTransform.gameObject.SetActive(showHud);
+            if (!showHud) return;
+
+            Transform view = _fpsCamera != null ? _fpsCamera : _playerTransform;
+            Vector3 targetPos = _goalkeeperTransform != null ? _goalkeeperTransform.position : _goalkeeperGoalCenter;
+            Vector3 local = view.InverseTransformPoint(targetPos);
+
+            string horizontal = local.x > 0.35f ? "→" : local.x < -0.35f ? "←" : string.Empty;
+            string vertical = local.y > 0.2f ? "↑" : local.y < -0.15f ? "↓" : string.Empty;
+            string arrowText = string.IsNullOrEmpty(vertical + horizontal) ? "↑" : vertical + horizontal;
+
+            if (_attackArrowLabel != null)
+                _attackArrowLabel.text = arrowText;
+
+            if (_fallbackHudArrowLabel != null)
+                _fallbackHudArrowLabel.text = arrowText;
+            if (_fallbackHudStatusLabel != null)
+                _fallbackHudStatusLabel.text = "ATTACK";
+
+            if (_attackArrowTransform != null)
+            {
+                Vector3 clampedLocal = new Vector3(
+                    Mathf.Clamp(local.x * 0.16f, -0.55f, 0.55f),
+                    Mathf.Clamp(local.y * 0.14f + 0.18f, -0.28f, 0.38f),
+                    1.0f);
+
+                _attackArrowTransform.position = view.TransformPoint(clampedLocal);
+                _attackArrowTransform.rotation = Quaternion.LookRotation(view.forward, view.up);
+            }
+
+            if (_fallbackHudCanvas != null)
+            {
+                Transform hud = _fallbackHudCanvas.transform;
+                hud.position = view.position + view.forward * 1.0f + view.up * 0.22f + view.right * -0.42f;
+                hud.rotation = Quaternion.LookRotation(view.forward, view.up);
+            }
+        }
+
+        private void EnsureFallbackHud()
+        {
+            if (_fallbackHudCanvas != null) return;
+
+            var root = new GameObject("FallbackDirectionHUD");
+            var canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.sortingOrder = 999;
+            root.AddComponent<CanvasScaler>().dynamicPixelsPerUnit = 30f;
+            root.AddComponent<GraphicRaycaster>();
+
+            var rt = root.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(420f, 180f);
+            rt.localScale = Vector3.one * 0.0022f;
+
+            var arrowGo = new GameObject("Arrow", typeof(RectTransform), typeof(TextMeshProUGUI));
+            arrowGo.transform.SetParent(root.transform, false);
+            var arrowRt = arrowGo.GetComponent<RectTransform>();
+            arrowRt.anchorMin = new Vector2(0.5f, 0.5f);
+            arrowRt.anchorMax = new Vector2(0.5f, 0.5f);
+            arrowRt.sizeDelta = new Vector2(260f, 100f);
+            arrowRt.anchoredPosition = new Vector2(0f, 18f);
+            _fallbackHudArrowLabel = arrowGo.GetComponent<TextMeshProUGUI>();
+            _fallbackHudArrowLabel.text = "↑";
+            _fallbackHudArrowLabel.fontSize = 64f;
+            _fallbackHudArrowLabel.alignment = TextAlignmentOptions.Center;
+            _fallbackHudArrowLabel.color = new Color(1f, 0.82f, 0.12f, 1f);
+
+            var statusGo = new GameObject("Status", typeof(RectTransform), typeof(TextMeshProUGUI));
+            statusGo.transform.SetParent(root.transform, false);
+            var statusRt = statusGo.GetComponent<RectTransform>();
+            statusRt.anchorMin = new Vector2(0.5f, 0.5f);
+            statusRt.anchorMax = new Vector2(0.5f, 0.5f);
+            statusRt.sizeDelta = new Vector2(260f, 40f);
+            statusRt.anchoredPosition = new Vector2(0f, -42f);
+            _fallbackHudStatusLabel = statusGo.GetComponent<TextMeshProUGUI>();
+            _fallbackHudStatusLabel.text = "ATTACK";
+            _fallbackHudStatusLabel.fontSize = 24f;
+            _fallbackHudStatusLabel.alignment = TextAlignmentOptions.Center;
+            _fallbackHudStatusLabel.color = Color.white;
+
+            _fallbackHudCanvas = canvas;
+            root.SetActive(false);
+            UpdateAttackArrow();
+        }
+
+        private void EnsureLampHeadHeight()
+        {
+            var lampHeads = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+            foreach (var t in lampHeads)
+            {
+                if (t == null || t.name != "LampHead") continue;
+                Vector3 localPos = t.localPosition;
+                localPos.y = _lampHeadRuntimeY;
+                t.localPosition = localPos;
+            }
+        }
+
         private IEnumerator MatchLoop()
         {
             while (_isMatchRunning)
@@ -263,7 +682,7 @@ namespace SoccerBot
             {
                 _teammateTransform.gameObject.SetActive(true);
                 _teammateTransform.position = _playerTransform.TransformPoint(_teammateSetupOffset);
-                _teammateTransform.rotation = _playerTransform.rotation;
+                _teammateTransform.rotation = _playerTransform.rotation * Quaternion.Euler(0f, 180f, 0f);
             }
             if (_opponentTransform != null && _playerTransform != null)
             {

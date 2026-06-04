@@ -14,9 +14,17 @@ namespace SoccerBot
         [SerializeField] private GameObject _trainingGoalFrame;
         [SerializeField] private TextMeshProUGUI _trainingBodyLabel;
 
+        private enum SmartBallInputMode
+        {
+            Mock,
+            Ble
+        }
+
         [Header("Training Ball")]
         [SerializeField] private SmartBallController _smartBallController;
         [SerializeField] private MockSmartBallSource _mockSource;
+        [SerializeField] private BleSmartBallSource _bleSource;
+        [SerializeField] private SmartBallInputMode _inputMode = SmartBallInputMode.Mock;
 
         [Header("Layout")]
         [SerializeField] private Vector3 _ballPosition = new Vector3(0f, 0.22f, 0f);
@@ -123,11 +131,15 @@ namespace SoccerBot
                 GameObject smartBallGo = existing != null ? existing.gameObject : CreateSmartBall();
                 _smartBallController = smartBallGo.GetComponent<SmartBallController>();
                 _mockSource = smartBallGo.GetComponent<MockSmartBallSource>();
-                _smartBallController.SetSource(_mockSource);
+                _bleSource = smartBallGo.GetComponent<BleSmartBallSource>();
+                ApplySelectedSource();
             }
             else
             {
                 _smartBallController.transform.position = _ballPosition;
+                _mockSource ??= _smartBallController.GetComponent<MockSmartBallSource>();
+                _bleSource ??= _smartBallController.GetComponent<BleSmartBallSource>();
+                ApplySelectedSource();
             }
         }
 
@@ -275,9 +287,21 @@ namespace SoccerBot
             BuildSoccerBallPatches(root.transform);
 
             _mockSource = root.AddComponent<MockSmartBallSource>();
+            _bleSource = root.AddComponent<BleSmartBallSource>();
             _smartBallController = root.AddComponent<SmartBallController>();
-            _smartBallController.SetSource(_mockSource);
+            ApplySelectedSource();
             return root;
+        }
+
+        private void ApplySelectedSource()
+        {
+            if (_smartBallController == null) return;
+
+            ISmartBallSource source = _inputMode == SmartBallInputMode.Ble
+                ? _bleSource as ISmartBallSource
+                : _mockSource;
+
+            _smartBallController.SetSource(source);
         }
 
         private void BuildSoccerBallPatches(Transform ballRoot)
@@ -373,6 +397,7 @@ namespace SoccerBot
                 $"Position: {pos.x:0.00}, {pos.y:0.00}, {pos.z:0.00}\n" +
                 $"Rotation: {euler.x:0}/{euler.y:0}/{euler.z:0} deg\n" +
                 $"Spin: {spin.x:0}/{spin.y:0}/{spin.z:0} deg/s\n" +
+                $"Input mode: {_inputMode}\n" +
                 "Press R to reset orientation.\n" +
                 "Training mode now owns its own field and moving mock ball.";
         }

@@ -1,6 +1,7 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
@@ -39,7 +40,12 @@ namespace SoccerBot
         [SerializeField] private float _fadeInTime = 0.6f;
         [SerializeField] private float _fadeOutTime = 0.5f;
 
+        [Header("Quest Fallback Controls")]
+        [SerializeField] private bool _enableQuestButtonFallback = true;
+
         private bool _isBuilt;
+        private InputAction _questPrimaryAction;
+        private InputAction _questSecondaryAction;
 
         void Awake()
         {
@@ -53,7 +59,52 @@ namespace SoccerBot
         {
             AutoResolveRefs();
             BindButtons();
+            SetupQuestFallbackControls();
             ShowMenu();
+        }
+
+        void Update()
+        {
+            if (!_enableQuestButtonFallback) return;
+            if (_questPrimaryAction == null || _questSecondaryAction == null) return;
+
+            bool primaryPressed = _questPrimaryAction.WasPressedThisFrame();
+            bool secondaryPressed = _questSecondaryAction.WasPressedThisFrame();
+            if (!primaryPressed && !secondaryPressed) return;
+
+            bool trainingVisible = _trainingCanvasGroup != null && _trainingCanvasGroup.gameObject.activeInHierarchy;
+            bool menuVisible = _canvasGroup != null && _canvasGroup.alpha > 0.99f && _canvasGroup.interactable;
+
+            if (trainingVisible)
+            {
+                OnTrainingBackClicked();
+                return;
+            }
+
+            if (menuVisible)
+            {
+                if (primaryPressed)
+                {
+                    OnStartClicked();
+                    return;
+                }
+
+                if (secondaryPressed)
+                {
+                    OnTrainingClicked();
+                }
+            }
+        }
+
+        void OnDestroy()
+        {
+            _questPrimaryAction?.Disable();
+            _questPrimaryAction?.Dispose();
+            _questPrimaryAction = null;
+
+            _questSecondaryAction?.Disable();
+            _questSecondaryAction?.Dispose();
+            _questSecondaryAction = null;
         }
 
         private void AutoResolveRefs()
@@ -140,6 +191,22 @@ namespace SoccerBot
             BindButton(_trainingButton, OnTrainingClicked);
             BindButton(_exitButton, OnExitClicked);
             BindButton(_trainingBackButton, OnTrainingBackClicked);
+        }
+
+        private void SetupQuestFallbackControls()
+        {
+            if (!_enableQuestButtonFallback) return;
+            if (_questPrimaryAction != null || _questSecondaryAction != null) return;
+
+            _questPrimaryAction = new InputAction("QuestPrimary", InputActionType.Button);
+            _questPrimaryAction.AddBinding("<XRController>{RightHand}/primaryButton");
+            _questPrimaryAction.AddBinding("<XRController>{LeftHand}/primaryButton");
+            _questPrimaryAction.Enable();
+
+            _questSecondaryAction = new InputAction("QuestSecondary", InputActionType.Button);
+            _questSecondaryAction.AddBinding("<XRController>{RightHand}/secondaryButton");
+            _questSecondaryAction.AddBinding("<XRController>{LeftHand}/secondaryButton");
+            _questSecondaryAction.Enable();
         }
 
         private void BindButton(Button button, UnityEngine.Events.UnityAction action)
