@@ -11846,6 +11846,7 @@ GameObject:
   m_Component:
   - component: {fileID: 365206152}
   - component: {fileID: 365206151}
+  - component: {fileID: 365206153}
   m_Layer: 0
   m_Name: Stadium
   m_TagString: Untagged
@@ -11889,6 +11890,33 @@ MonoBehaviour:
   - {r: 0.9, g: 0.9, b: 0.92, a: 1}
   - {r: 0.95, g: 0.78, b: 0.15, a: 1}
   - {r: 0.3, g: 0.32, b: 0.36, a: 1}
+--- !u!114 &365206153
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 365206150}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 541735421afea8040bf477e3e3a1a8a7, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SoccerBot.CrowdAnimator
+  _dotsPerSeat: 2
+  _dotRadius: 0.06
+  _dotHeightAboveSeat: 0.3
+  _bobAmplitude: 0.08
+  _bobFrequency: 2.5
+  _dotSpawnRadius: 0.2
+  _confettiCount: 25
+  _confettiLifetime: 2.5
+  _confettiSpawnY: 5
+  _confettiSpawnRadius: 4
+  _flashDuration: 0.5
+  _flashIntensityBoost: 0.6
+  _flashCount: 2
+  _crowdCheerClips: []
+  _cheerVolume: 0.8
 --- !u!4 &365206152
 Transform:
   m_ObjectHideFlags: 0
@@ -25074,6 +25102,7 @@ GameObject:
   - component: {fileID: 833829291}
   - component: {fileID: 833829292}
   - component: {fileID: 833829293}
+  - component: {fileID: 833829294}
   m_Layer: 0
   m_Name: Global Volume
   m_TagString: Untagged
@@ -25131,6 +25160,25 @@ MonoBehaviour:
   _contrast: 10
   _saturation: 15
   _postExposure: 0
+--- !u!114 &833829294
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 833829290}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1ffc648d62609384bb177f50f7709955, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SoccerBot.LightingConfigurator
+  _lightColor: {r: 1, g: 0.75, b: 0.5, a: 1}
+  _lightIntensity: 1.2
+  _lightYAngle: -20
+  _shadowStrength: 0.65
+  _ambientColor: {r: 0.1, g: 0.08, b: 0.06, a: 1}
+  _shadowDistance: 30
+  _shadowResolution: 3
 --- !u!1 &837054011
 GameObject:
   m_ObjectHideFlags: 0

@@ -87,7 +87,9 @@ namespace SoccerBot
         [SerializeField] private float _supportNpcForwardDistance = 4.8f;
         [SerializeField] private float _supportNpcBackDistance = 3.6f;
         [SerializeField] private float _goalkeeperForwardDistance = 6.8f;
-        [SerializeField] private float _lampHeadRuntimeY = 0.223f;
+        [SerializeField] private float _backgroundNpcScale = 0.56f;
+        [SerializeField] private float _goalkeeperScale = 0.64f;
+        [SerializeField] private float _lampHeadRuntimeZ = 0.24f;
         [SerializeField] private Vector3 _goalkeeperGoalCenter = new(0f, 0.0055f, 8.15f);
 
         [Header("Whistle")]
@@ -349,7 +351,6 @@ namespace SoccerBot
             EnsureBackgroundNpcs();
             EnsureAttackArrow();
             EnsureFallbackHud();
-            EnsureLampHeadHeight();
         }
 
         private void EnsureRobotVisualSwap()
@@ -388,7 +389,7 @@ namespace SoccerBot
         {
             Vector3 forward = GetAttackForward();
             _goalkeeperPosition = _goalkeeperGoalCenter;
-            _goalkeeperLookAt = _goalkeeperGoalCenter - forward * 2f;
+            _goalkeeperLookAt = _goalkeeperGoalCenter - forward * _goalkeeperForwardDistance;
             _goalkeeperLookAt.y = _goalkeeperGoalCenter.y;
 
             var existing = GameObject.Find("Goalkeeper");
@@ -403,7 +404,7 @@ namespace SoccerBot
                     "strong man b",
                     _goalkeeperPosition,
                     RedTeamColor,
-                    new Vector3(0.64f, 0.64f, 0.64f));
+                    Vector3.one * _goalkeeperScale);
             }
 
             if (_goalkeeperTransform == null) return;
@@ -456,7 +457,7 @@ namespace SoccerBot
                     prefabName,
                     positions[i],
                     color,
-                    new Vector3(0.72f, 0.72f, 0.72f));
+                    Vector3.one * _backgroundNpcScale);
 
                 if (npc == null) continue;
 
@@ -474,20 +475,7 @@ namespace SoccerBot
             var existing = GameObject.Find(objectName);
             if (existing != null) return existing.transform;
 
-            Transform sourceModel = null;
-            bool useBlueSource = color == BlueTeamColor;
-
-            if (useBlueSource)
-            {
-                sourceModel = FindVisualTemplate(_teammateTransform);
-                if (sourceModel == null) sourceModel = FindVisualTemplate(_opponentTransform);
-            }
-            else
-            {
-                sourceModel = FindVisualTemplate(_opponentTransform);
-                if (sourceModel == null) sourceModel = FindVisualTemplate(_teammateTransform);
-            }
-
+            Transform sourceModel = ResolveNpcVisualTemplate(prefabName, color);
             if (sourceModel == null) return null;
 
             var root = new GameObject(objectName).transform;
@@ -499,6 +487,59 @@ namespace SoccerBot
             model.transform.localScale = scale;
             TintRenderers(model, color);
             return root;
+        }
+
+        private Transform ResolveNpcVisualTemplate(string prefabName, Color color)
+        {
+            Transform preferred = FindVisualTemplateByName(prefabName, _teammateTransform, _opponentTransform, _robotTransform);
+            if (preferred != null) return preferred;
+
+            bool useBlueSource = color == BlueTeamColor;
+            if (useBlueSource)
+            {
+                preferred = FindVisualTemplate(_teammateTransform);
+                if (preferred == null) preferred = FindVisualTemplate(_opponentTransform);
+            }
+            else
+            {
+                preferred = FindVisualTemplate(_opponentTransform);
+                if (preferred == null) preferred = FindVisualTemplate(_teammateTransform);
+            }
+
+            if (preferred != null) return preferred;
+            return FindVisualTemplate(_robotTransform);
+        }
+
+        private static Transform FindVisualTemplateByName(string prefabName, params Transform[] roots)
+        {
+            if (string.IsNullOrWhiteSpace(prefabName) || roots == null) return null;
+
+            string normalizedPrefabName = NormalizeVisualName(prefabName);
+            foreach (Transform root in roots)
+            {
+                if (root == null) continue;
+
+                foreach (Transform candidate in root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (NormalizeVisualName(candidate.name) != normalizedPrefabName) continue;
+                    Transform template = FindVisualTemplate(candidate);
+                    if (template != null) return template;
+                }
+
+                if (NormalizeVisualName(root.name) == normalizedPrefabName)
+                {
+                    Transform template = FindVisualTemplate(root);
+                    if (template != null) return template;
+                }
+            }
+
+            return null;
+        }
+
+        private static string NormalizeVisualName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            return value.Replace("-", string.Empty).Replace("_", string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
         }
 
         private static void TintRenderers(GameObject root, Color color)
@@ -647,7 +688,7 @@ namespace SoccerBot
             {
                 if (t == null || t.name != "LampHead") continue;
                 Vector3 localPos = t.localPosition;
-                localPos.y = _lampHeadRuntimeY;
+                localPos.z = _lampHeadRuntimeZ;
                 t.localPosition = localPos;
             }
         }

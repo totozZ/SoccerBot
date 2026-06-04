@@ -39,7 +39,8 @@ namespace SoccerBot
 
         [Header("Floodlight Pylons")]
         [SerializeField] private bool  _buildPylons   = true;
-        [SerializeField] private float _pylonHeight   = 6.5f;
+        [SerializeField] private float _pylonHeight   = 8.5f;
+        [SerializeField] private float _lampHeadLift  = 2.0f;
         [SerializeField] private float _pylonInset    = 1.2f;  // how far outside the top tier
         [SerializeField] private Color _pylonColor    = new Color(0.25f, 0.27f, 0.3f);
         [SerializeField] private Color _lampColor     = new Color(1f, 0.96f, 0.8f);
@@ -189,7 +190,7 @@ namespace SoccerBot
 
             float rx = baseRx + _tiers * _tierDepth + _pylonInset;
             float rz = baseRz + _tiers * _tierDepth + _pylonInset;
-            float topY = _wallHeight + _tiers * _tierRise + 1.0f;
+            float headY = _wallHeight + _tiers * _tierRise + 1.0f + _lampHeadLift;
 
             // Corners at ±45°-ish around the ellipse.
             float[] angles = { 45f, 135f, 225f, 315f };
@@ -210,7 +211,7 @@ namespace SoccerBot
                 Quaternion headRot = toCenter.sqrMagnitude > 0.001f
                     ? Quaternion.LookRotation(toCenter.normalized, Vector3.up) * Quaternion.Euler(25f, 0f, 0f)
                     : Quaternion.identity;
-                var head = Block(mast, "LampHead", new Vector3(0f, topY, 0f), headRot,
+                var head = Block(mast, "LampHead", new Vector3(0f, headY, 0f), headRot,
                     new Vector3(1.6f, 0.8f, 0.25f), _pylonColor);
                 Destroy(head.GetComponent<Collider>());
 
@@ -225,6 +226,17 @@ namespace SoccerBot
                     lr.material.EnableKeyword("_EMISSION");
                     lr.material.SetColor("_EmissionColor", _lampColor * 1.5f);
                 }
+
+                var floodLight = lamp.AddComponent<Light>();
+                floodLight.type = LightType.Spot;
+                floodLight.color = _lampColor;
+                floodLight.intensity = 1.25f;
+                floodLight.range = 18f;
+                floodLight.spotAngle = 75f;
+                floodLight.innerSpotAngle = 40f;
+                floodLight.shadows = LightShadows.None;
+                floodLight.transform.localPosition = new Vector3(0f, 0f, 0.12f);
+                floodLight.transform.localRotation = Quaternion.identity;
             }
         }
 

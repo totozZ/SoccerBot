@@ -29,6 +29,7 @@ namespace SoccerBot
         [SerializeField] private AudioClip _sfxGoal;
         [SerializeField] private AudioClip _sfxIntercept;
         [SerializeField] private AudioClip _sfxMiss;
+        [SerializeField] private AudioClip _sfxCrowdCheer;
 
         [Header("Volume")]
         [SerializeField, Range(0f, 1f)] private float _masterVolume = 1f;
@@ -80,7 +81,8 @@ namespace SoccerBot
         public void PlayShoot()     => PlaySFX(_sfxShoot);
         public void PlayGoal()      => PlaySFX(_sfxGoal);
         public void PlayIntercept() => PlaySFX(_sfxIntercept);
-        public void PlayMiss()      => PlaySFX(_sfxMiss);
+        public void PlayMiss()        => PlaySFX(_sfxMiss);
+        public void PlayCrowdCheer()  => PlaySFX(_sfxCrowdCheer);
 
         public void PlaySFX(AudioClip clip)
         {

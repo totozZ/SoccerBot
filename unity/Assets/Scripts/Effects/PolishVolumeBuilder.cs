@@ -12,16 +12,16 @@ namespace SoccerBot
     public class PolishVolumeBuilder : MonoBehaviour
     {
         [Header("Bloom")]
-        [SerializeField] private float _bloomIntensity = 0.5f;
-        [SerializeField] private float _bloomThreshold = 1.1f;
+        [SerializeField] private float _bloomIntensity = 0.6f;
+        [SerializeField] private float _bloomThreshold = 1.0f;
 
         [Header("Vignette")]
-        [SerializeField, Range(0f, 1f)] private float _vignetteIntensity = 0.25f;
+        [SerializeField, Range(0f, 1f)] private float _vignetteIntensity = 0.3f;
 
         [Header("Color Adjustments")]
-        [SerializeField, Range(-100f, 100f)] private float _contrast    = 10f;
-        [SerializeField, Range(-100f, 100f)] private float _saturation  = 15f;
-        [SerializeField, Range(-100f, 100f)] private float _postExposure = 0.3f;
+        [SerializeField, Range(-100f, 100f)] private float _contrast    = 15f;
+        [SerializeField, Range(-100f, 100f)] private float _saturation  = 10f;
+        [SerializeField, Range(-100f, 100f)] private float _postExposure = 0.2f;
 
         void Awake()
         {

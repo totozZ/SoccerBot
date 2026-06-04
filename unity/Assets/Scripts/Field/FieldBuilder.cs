@@ -15,8 +15,8 @@ namespace SoccerBot
     public class FieldBuilder : MonoBehaviour
     {
         [Header("Dimensions (meters)")]
-        [SerializeField] private float _halfWidth = 6.0f;
-        [SerializeField] private float _halfLength = 9.0f;
+        [SerializeField] public float _halfWidth = 6.0f;
+        [SerializeField] public float _halfLength = 9.0f;
         [SerializeField] private float _centerCircleRadius = 1.8f;
 
         [Header("Colors")]
@@ -40,7 +40,7 @@ namespace SoccerBot
 
         [Header("Grass Material (optional)")]
         [Tooltip("有就用这个材质（保留贴图），没有就退回纯色 _grassColor。")]
-        [SerializeField] private Material _grassMaterial;
+        [SerializeField] public Material _grassMaterial;
 
         void Awake() => Build();
 
