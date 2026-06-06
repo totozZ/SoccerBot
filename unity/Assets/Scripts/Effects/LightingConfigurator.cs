@@ -8,13 +8,17 @@ namespace SoccerBot
     public class LightingConfigurator : MonoBehaviour
     {
         [Header("Directional Light")]
-        [SerializeField] private Color _lightColor    = new Color(1f, 0.75f, 0.5f);
+        [SerializeField] private Color _lightColor    = new Color(1f, 0.67f, 0.38f);
         [SerializeField] private float _lightIntensity = 1.2f;
-        [SerializeField] private float _lightYAngle    = -20f;
-        [SerializeField] private float _shadowStrength = 0.65f;
+        [SerializeField] private float _lightYAngle    = -8f;
+        [SerializeField] private float _shadowStrength = 0.45f;
 
         [Header("Ambient")]
         [SerializeField] private Color _ambientColor   = new Color(0.1f, 0.08f, 0.06f);
+        [SerializeField] private Color _ambientSkyColor = new Color(0.12f, 0.16f, 0.24f);
+        [SerializeField] private Color _ambientEquatorColor = new Color(0.32f, 0.26f, 0.16f);
+        [SerializeField] private Color _ambientGroundColor = new Color(0.045f, 0.05f, 0.055f);
+        [SerializeField, Range(0f, 1f)] private float _reflectionIntensity = 0.35f;
 
         [Header("Shadow (PC default)")]
         [SerializeField] private float _shadowDistance = 30f;
@@ -44,8 +48,11 @@ namespace SoccerBot
 #endif
             }
 
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = _ambientColor;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = _ambientSkyColor;
+            RenderSettings.ambientEquatorColor = _ambientEquatorColor;
+            RenderSettings.ambientGroundColor = _ambientGroundColor;
+            RenderSettings.reflectionIntensity = _reflectionIntensity;
         }
 
         private Light FindMainDirectionalLight()

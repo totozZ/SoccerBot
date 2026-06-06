@@ -71,6 +71,10 @@ namespace SoccerBot
         [Header("Demo Scene Polish")]
         [SerializeField] private bool _enableDemoScenePolish = true;
         [SerializeField] private bool _replaceRobotWithTeammateVisual = true;
+        [Tooltip("Global down-scale applied to every NPC and the ball (1 = original size).")]
+        [SerializeField] private float _npcScaleMultiplier = 0.8f;
+        [Tooltip("Vertical nudge for the FPS eye height (metres, negative = lower view).")]
+        [SerializeField] private float _eyeHeightAdjust = -0.25f;
         [SerializeField] private Vector3 _robotDemoPosition = new(-2.4f, 0f, -3.6f);
         [SerializeField] private Vector3 _robotVisualLocalOffset = Vector3.zero;
         [SerializeField] private Vector3 _robotVisualLocalScale = Vector3.one * 0.576f;
@@ -94,6 +98,7 @@ namespace SoccerBot
 
         [Header("Whistle")]
         [SerializeField] private AudioSource _whistleSource;
+        [SerializeField] private AudioSource _ballReceiveSource;
 
         [Header("Score Display Data")]
         [SerializeField] private Scenario _scoreSuccessData;
@@ -284,6 +289,18 @@ namespace SoccerBot
             _whistleSource.PlayOneShot(clip, 0.8f);
         }
 
+        private void PlayBallReceive()
+        {
+            if (_ballReceiveSource == null)
+            {
+                _ballReceiveSource = gameObject.AddComponent<AudioSource>();
+                _ballReceiveSource.playOnAwake = false;
+                _ballReceiveSource.spatialBlend = 0f;
+            }
+            var clip = ThudGenerator.Create();
+            _ballReceiveSource.PlayOneShot(clip, 0.9f);
+        }
+
         private void ApplyDemoOverrides()
         {
             _goalTargetInPos = new Vector3(1.1f, 0.75f, 8.9f);
@@ -351,6 +368,41 @@ namespace SoccerBot
             EnsureBackgroundNpcs();
             EnsureAttackArrow();
             EnsureFallbackHud();
+            ApplyNpcDownscale();
+            ApplyEyeHeight();
+        }
+
+        // Lowers (or raises) the FPS eye height by a fixed nudge, once.
+        private bool _eyeHeightApplied;
+        private void ApplyEyeHeight()
+        {
+            if (_eyeHeightApplied || Mathf.Approximately(_eyeHeightAdjust, 0f)) return;
+            if (_fpsAnchor == null) return;
+            _eyeHeightApplied = true;
+
+            Vector3 p = _fpsAnchor.localPosition;
+            p.y += _eyeHeightAdjust;
+            _fpsAnchor.localPosition = p;
+        }
+
+        // Down-scales the scene-authored NPCs and the ball (the runtime-spawned
+        // robot / goalkeeper / support NPCs are already scaled at creation time).
+        // Guarded so it only ever runs once, even if polish is re-invoked.
+        private bool _npcDownscaleApplied;
+        private void ApplyNpcDownscale()
+        {
+            if (_npcDownscaleApplied || Mathf.Approximately(_npcScaleMultiplier, 1f)) return;
+            _npcDownscaleApplied = true;
+
+            ScaleTransform(_teammateTransform);
+            ScaleTransform(_opponentTransform);
+            if (_ball != null) ScaleTransform(_ball.transform);
+        }
+
+        private void ScaleTransform(Transform t)
+        {
+            if (t == null) return;
+            t.localScale *= _npcScaleMultiplier;
         }
 
         private void EnsureRobotVisualSwap()
@@ -368,7 +420,7 @@ namespace SoccerBot
             {
                 existingModel.localPosition = _robotVisualLocalOffset;
                 existingModel.localRotation = Quaternion.identity;
-                existingModel.localScale = _robotVisualLocalScale;
+                existingModel.localScale = _robotVisualLocalScale * _npcScaleMultiplier;
                 TintRenderers(existingModel.gameObject, BlueTeamColor);
                 return;
             }
@@ -381,7 +433,7 @@ namespace SoccerBot
             model.name = "Model";
             model.transform.localPosition = _robotVisualLocalOffset;
             model.transform.localRotation = Quaternion.identity;
-            model.transform.localScale = _robotVisualLocalScale;
+            model.transform.localScale = _robotVisualLocalScale * _npcScaleMultiplier;
             TintRenderers(model, BlueTeamColor);
         }
 
@@ -404,7 +456,7 @@ namespace SoccerBot
                     "strong man b",
                     _goalkeeperPosition,
                     RedTeamColor,
-                    Vector3.one * _goalkeeperScale);
+                    Vector3.one * (_goalkeeperScale * _npcScaleMultiplier));
             }
 
             if (_goalkeeperTransform == null) return;
@@ -457,7 +509,7 @@ namespace SoccerBot
                     prefabName,
                     positions[i],
                     color,
-                    Vector3.one * _backgroundNpcScale);
+                    Vector3.one * (_backgroundNpcScale * _npcScaleMultiplier));
 
                 if (npc == null) continue;
 
@@ -693,6 +745,16 @@ namespace SoccerBot
             }
         }
 
+        private void UpdateTeammateLookAtPlayer()
+        {
+            if (_teammateTransform == null || _playerTransform == null) return;
+
+            Vector3 toPlayer = _playerTransform.position - _teammateTransform.position;
+            toPlayer.y = 0f;
+            if (toPlayer.sqrMagnitude > 0.0001f)
+                _teammateTransform.rotation = Quaternion.LookRotation(toPlayer);
+        }
+
         private IEnumerator MatchLoop()
         {
             while (_isMatchRunning)
@@ -723,7 +785,7 @@ namespace SoccerBot
             {
                 _teammateTransform.gameObject.SetActive(true);
                 _teammateTransform.position = _playerTransform.TransformPoint(_teammateSetupOffset);
-                _teammateTransform.rotation = _playerTransform.rotation * Quaternion.Euler(0f, 180f, 0f);
+                UpdateTeammateLookAtPlayer();
             }
             if (_opponentTransform != null && _playerTransform != null)
             {
@@ -771,7 +833,10 @@ namespace SoccerBot
         {
             CurrentPhase = Phase.Possession;
             if (_ball != null && _playerTransform != null)
+            {
                 _ball.AttachTo(_playerTransform, _ballOffsetPlayer);
+                PlayBallReceive();   // heavy "哒" trap thud as the player receives the pass
+            }
             if (_player != null)
             {
                 _player.ShootingEnabled = true;
@@ -780,6 +845,8 @@ namespace SoccerBot
 
             while (CurrentPhase == Phase.Possession)
             {
+                UpdateTeammateLookAtPlayer();
+
                 if (_opponentTracksBall && _opponentTransform != null && _ball != null)
                 {
                     Vector3 toBall = _ball.transform.position - _opponentTransform.position;
