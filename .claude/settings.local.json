@@ -357,7 +357,13 @@
       "Bash(curl -s --max-time 60 -X POST http://localhost:8090/skill/asset_refresh -H 'Content-Type: application/json' -d '{}' -o 'C:\\\\Users\\\\95833/ref.json')",
       "Bash(curl -s --max-time 30 -X POST \"http://localhost:8090/skill/debug_get_errors\" -H \"Content-Type: application/json\" -d \"{}\")",
       "Bash(curl -s --max-time 30 -X POST \"http://localhost:8090/skill/script_get_compile_feedback\" -H \"Content-Type: application/json\" -d \"{\\\\\"path\\\\\":\\\\\"Assets/Scripts/Effects/CrowdAnimator.cs\\\\\"}\")",
-      "Bash(curl -s --max-time 30 -X POST \"http://localhost:8090/skill/editor_play\" -H \"Content-Type: application/json\" -d \"{}\")"
+      "Bash(curl -s --max-time 30 -X POST \"http://localhost:8090/skill/editor_play\" -H \"Content-Type: application/json\" -d \"{}\")",
+      "Bash(cd \"/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Scripts\" && ls XR Flow UI Effects)",
+      "Read(//c/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Scripts/**)",
+      "Bash(ls Assets/Scenes)",
+      "Bash(grep -rln \"MainMenuPanel\\\\|IntroPanel\\\\|XRSetup\\\\|CrowdAnimator\\\\|LightingConfigurator\" Assets/Scenes)",
+      "Bash(cd \"/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity\" && grep -n \"m_Name: \" Assets/Scenes/Main.unity | grep -iE \"player|fpsanchor|fpscamera|maincamera|xr origin|stadium|directional|mainmenu|intro\" | head -40)",
+      "Read(//c/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Scenes/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"

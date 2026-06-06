@@ -22,6 +22,25 @@ namespace SoccerBot
 
         private bool _isMatchStarting;
 
+        void Awake()
+        {
+            // Create the runtime main-menu HERE (in Awake), not in Start.
+            // XRSetup.Start() runs a one-time pass that converts every Screen-Space
+            // Overlay canvas to World Space so it renders in VR. Overlay canvases are
+            // invisible in Quest stereo. If the menu is created in Start it may be born
+            // AFTER that pass and stay Overlay → invisible on the headset (the A-button
+            // fallback still fires, so you can still enter the intro — matching the bug).
+            // All Awakes run before any Start, so creating it here guarantees the menu's
+            // canvas exists in time to be converted.
+            if (_mainMenu == null)
+                _mainMenu = FindFirstObjectByType<MainMenuPanel>(FindObjectsInactive.Include);
+            if (_mainMenu == null)
+            {
+                var menuGo = new GameObject("MainMenu");
+                _mainMenu = menuGo.AddComponent<MainMenuPanel>();
+            }
+        }
+
         void Start()
         {
             if (_introPanel == null)
@@ -42,12 +61,6 @@ namespace SoccerBot
             {
                 _introPanel.OnIntroDone -= StartMatch;
                 _introPanel.gameObject.SetActive(false);
-            }
-
-            if (_mainMenu == null)
-            {
-                var menuGo = new GameObject("MainMenu");
-                _mainMenu = menuGo.AddComponent<MainMenuPanel>();
             }
         }
 

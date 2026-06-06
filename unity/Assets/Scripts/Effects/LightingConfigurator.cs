@@ -15,8 +15,11 @@ namespace SoccerBot
 
         [Header("Ambient")]
         [SerializeField] private Color _ambientColor   = new Color(0.1f, 0.08f, 0.06f);
-        [SerializeField] private Color _ambientSkyColor = new Color(0.12f, 0.16f, 0.24f);
-        [SerializeField] private Color _ambientEquatorColor = new Color(0.32f, 0.26f, 0.16f);
+        // Trilight ambient lifts the pitch (an up-facing surface) mainly via sky + equator.
+        // Bumped from the original dim evening values to clear the "pitch still a bit dark"
+        // report on Quest, while keeping the warm match-night mood.
+        [SerializeField] private Color _ambientSkyColor = new Color(0.22f, 0.27f, 0.36f);
+        [SerializeField] private Color _ambientEquatorColor = new Color(0.46f, 0.40f, 0.30f);
         [SerializeField] private Color _ambientGroundColor = new Color(0.045f, 0.05f, 0.055f);
         [SerializeField, Range(0f, 1f)] private float _reflectionIntensity = 0.35f;
 

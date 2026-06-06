@@ -69,10 +69,14 @@ namespace SoccerBot
 
         private const int InstanceBatch = 1023;          // GPU instancing per-call cap
 
+        // Generous static bounds so the instanced crowd is never frustum-culled.
+        // RenderMeshInstanced requires worldBounds; the whole stadium fits easily inside.
+        private static readonly Bounds CrowdBounds =
+            new Bounds(Vector3.zero, new Vector3(200f, 100f, 200f));
+
         private Mesh                  _figureMesh;
         private Shader                _figureShader;      // reused from the seats (build-safe)
         private List<CrowdBucket>     _buckets   = new List<CrowdBucket>();
-        private Matrix4x4[]           _drawBuffer = new Matrix4x4[InstanceBatch];
         private float                 _cheerLevel;        // 0..1 envelope, drives the goal jump
         private Coroutine             _cheerRoutine;
         private bool                  _crowdBuilt;
@@ -145,22 +149,23 @@ namespace SoccerBot
 
         private void DrawBucket(CrowdBucket bucket)
         {
+            // RenderMeshInstanced — NOT the legacy Graphics.DrawMeshInstanced — renders
+            // correctly under Quest's Single Pass Instanced stereo mode
+            // (m_StereoRenderingModeAndroid: 2). DrawMeshInstanced silently drops the
+            // whole crowd there, which is why the stands looked empty on the headset.
+            var rp = new RenderParams(bucket.material)
+            {
+                shadowCastingMode = ShadowCastingMode.Off,
+                receiveShadows    = true,
+                worldBounds       = CrowdBounds,
+            };
+
             int drawn = 0;
             while (drawn < bucket.count)
             {
                 int n = Mathf.Min(InstanceBatch, bucket.count - drawn);
-                Matrix4x4[] src;
-                if (drawn == 0 && n == bucket.count)
-                {
-                    src = bucket.work;                 // common case: whole bucket fits one batch
-                }
-                else
-                {
-                    System.Array.Copy(bucket.work, drawn, _drawBuffer, 0, n);
-                    src = _drawBuffer;
-                }
-                Graphics.DrawMeshInstanced(_figureMesh, 0, bucket.material, src, n,
-                    null, ShadowCastingMode.Off, true);
+                // startInstance offset lets us draw straight from bucket.work — no copy.
+                Graphics.RenderMeshInstanced(rp, _figureMesh, 0, bucket.work, n, drawn);
                 drawn += n;
             }
         }
