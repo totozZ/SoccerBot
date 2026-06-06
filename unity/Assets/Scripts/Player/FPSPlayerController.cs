@@ -41,13 +41,16 @@ namespace SoccerBot
 
         public event Action<float> OnChargeChanged;          // 0..1 each frame while charging
         public event Action<float, Vector3> OnShoot;          // (power01, worldDirection)
+        public event Action<Vector3> OnReceiveAttempt;        // worldDirection
         public event Action OnChargeBegin;
         public event Action OnChargeCancel;
 
         public bool IsCharging => _charging;
         public float CurrentPower01 => _charging ? Mathf.Clamp01(_chargeTime / _maxChargeTime) : 0f;
+        public bool ReceiveInputHeld => _receiveAction != null && _receiveAction.IsPressed();
         public bool ShootingEnabled { get; set; } = false;   // gated by MatchFlowController
         public bool MovementEnabled { get; set; } = false;   // gated by MatchFlowController (only true during Possession)
+        public bool ReceptionEnabled { get; set; } = false;  // gated by MatchFlowController during Pass
 
         private float _yaw;
         private float _pitch;
@@ -58,6 +61,7 @@ namespace SoccerBot
         // Multi-source shoot trigger so PC mouse, Quest trigger, and Quest A button
         // all work without an Input Actions asset. Created in OnEnable, disposed in OnDisable.
         private InputAction _shootAction;
+        private InputAction _receiveAction;
         private InputAction _moveAction;   // Quest left thumbstick (Vector2)
 
         void OnEnable()
@@ -69,6 +73,14 @@ namespace SoccerBot
             _shootAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
             _shootAction.AddBinding("<XRController>{LeftHand}/primaryButton");    // Quest X button
             _shootAction.Enable();
+
+            _receiveAction = new InputAction("Receive", InputActionType.Button);
+            _receiveAction.AddBinding("<Keyboard>/space");
+            _receiveAction.AddBinding("<Mouse>/leftButton");
+            _receiveAction.AddBinding("<XRController>{RightHand}/gripPressed");
+            _receiveAction.AddBinding("<XRController>{LeftHand}/gripPressed");
+            _receiveAction.AddBinding("<XRController>{RightHand}/triggerPressed");
+            _receiveAction.Enable();
 
             _moveAction = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
             _moveAction.AddBinding("<XRController>{LeftHand}/thumbstick");
@@ -82,6 +94,12 @@ namespace SoccerBot
                 _shootAction.Disable();
                 _shootAction.Dispose();
                 _shootAction = null;
+            }
+            if (_receiveAction != null)
+            {
+                _receiveAction.Disable();
+                _receiveAction.Dispose();
+                _receiveAction = null;
             }
             if (_moveAction != null)
             {
@@ -131,6 +149,7 @@ namespace SoccerBot
 
             HandleLook(mouse);
             HandleMove(kb);
+            HandleReceive();
             HandleCharge(kb);
             ApplyChargeRecoil();
         }
@@ -183,6 +202,18 @@ namespace SoccerBot
         }
 
         // ── Charge & Shoot ───────────────────────────────────
+
+        private void HandleReceive()
+        {
+            if (_receiveAction == null || !ReceptionEnabled) return;
+            if (!_receiveAction.WasPressedThisFrame()) return;
+
+            Vector3 dir = _fpsCamera != null
+                ? _fpsCamera.transform.forward
+                : transform.forward;
+            dir.Normalize();
+            OnReceiveAttempt?.Invoke(dir);
+        }
 
         private void HandleCharge(Keyboard kb)
         {

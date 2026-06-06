@@ -11,7 +11,7 @@ namespace SoccerBot
 {
     public class MatchFlowController : MonoBehaviour
     {
-        public enum Phase { Idle, Setup, Pass, Possession, Shot, Score, Cooldown }
+        public enum Phase { Idle, Setup, Pass, Recovery, Possession, Shot, Score, Cooldown }
 
         [Header("Scene References")]
         [SerializeField] private Transform _robotTransform;
@@ -41,6 +41,28 @@ namespace SoccerBot
         [SerializeField] private float _setupDuration = 2.0f;
         [SerializeField] private float _passFlightTime = 1.6f;
         [SerializeField] private float _cooldownDuration = 3.0f;
+
+        [Header("Reception")]
+        [SerializeField, Range(0f, 1f)] private float _receiveWindowStart01 = 0.55f;
+        [SerializeField, Range(0f, 1f)] private float _receivePerfect01 = 0.78f;
+        [SerializeField, Range(0f, 1f)] private float _receiveWindowEnd01 = 0.95f;
+        [SerializeField, Range(1f, 90f)] private float _receiveFacingFullScoreAngle = 12f;
+        [SerializeField, Range(1f, 140f)] private float _receiveFacingFailAngle = 65f;
+        [SerializeField, Range(0f, 1f)] private float _minimumPossessionReceiveQuality = 0.20f;
+        [SerializeField, Range(0f, 0.4f)] private float _receivePowerBonus = 0.18f;
+        [SerializeField, Range(0f, 0.4f)] private float _poorReceivePowerPenalty = 0.12f;
+
+        [Header("Recovery Mash")]
+        [SerializeField] private bool _enableRecoveryMash = true;
+        [SerializeField, Range(0.8f, 5f)] private float _recoveryDuration = 2.4f;
+        [SerializeField, Range(4, 40)] private int _recoveryPressTarget = 14;
+        [SerializeField, Range(0.03f, 0.5f)] private float _recoveryPushPerPress = 0.14f;
+        [SerializeField, Range(0f, 1.5f)] private float _recoveryHeldPush = 0.36f;
+        [SerializeField, Range(0.5f, 12f)] private float _recoveryOpponentLerpSpeed = 8f;
+        [SerializeField, Range(0.5f, 4f)] private float _recoverySuccessKnockback = 1.9f;
+        [SerializeField, Range(0.2f, 3f)] private float _recoveryFailSurgeDistance = 0.9f;
+        [SerializeField, Range(0f, 0.15f)] private float _recoveryShakeAmplitude = 0.035f;
+        [SerializeField, Range(4f, 60f)] private float _recoveryShakeFrequency = 32f;
 
         [Header("Power Routing")]
         [SerializeField, Range(0.5f, 1f)] private float _scoreThreshold = 0.7f;
@@ -116,6 +138,23 @@ namespace SoccerBot
         private Canvas _fallbackHudCanvas;
         private TextMeshProUGUI _fallbackHudArrowLabel;
         private TextMeshProUGUI _fallbackHudStatusLabel;
+        private float _passProgress01;
+        private float _receiveQuality = 1f;
+        private bool _receiveAttempted;
+        private Vector3 _currentPassStart;
+        private Vector3 _currentPassEnd;
+        private bool _recoverySucceeded;
+        private int _recoveryPressCount;
+        private float _recoveryPersistentPush;
+        private float _recoveryPressPulse;
+        private Transform _recoveryShakeTarget;
+        private Vector3 _recoveryShakeBaseLocalPos;
+        private CanvasGroup _recoveryHudGroup;
+        private RectTransform _recoveryHudRoot;
+        private RectTransform _recoveryButtonRect;
+        private TextMeshProUGUI _recoveryPromptLabel;
+        private TextMeshProUGUI _recoveryMeterLabel;
+        private readonly System.Collections.Generic.List<Image> _recoveryBorderImages = new();
         private readonly System.Collections.Generic.List<Transform> _backgroundNpcTransforms = new();
         private static readonly Color BlueTeamColor = new(0.1f, 0.3f, 0.9f, 1f);
         private static readonly Color RedTeamColor = new(0.9f, 0.1f, 0.1f, 1f);
@@ -127,7 +166,11 @@ namespace SoccerBot
             EnsureFarGoalTargets();
             EnsureDemoScenePolish();
 
-            if (_player != null) _player.OnShoot += HandlePlayerShot;
+            if (_player != null)
+            {
+                _player.OnShoot += HandlePlayerShot;
+                _player.OnReceiveAttempt += HandleReceiveAttempt;
+            }
             if (_scenarioPlayer != null) _scenarioPlayer.OnScenarioComplete += HandleScenarioComplete;
 
             _menuAction = new InputAction("OpenMenu", InputActionType.Button);
@@ -141,7 +184,11 @@ namespace SoccerBot
 
         void OnDestroy()
         {
-            if (_player != null) _player.OnShoot -= HandlePlayerShot;
+            if (_player != null)
+            {
+                _player.OnShoot -= HandlePlayerShot;
+                _player.OnReceiveAttempt -= HandleReceiveAttempt;
+            }
             if (_scenarioPlayer != null) _scenarioPlayer.OnScenarioComplete -= HandleScenarioComplete;
             if (_menuAction != null)
             {
@@ -181,7 +228,11 @@ namespace SoccerBot
             {
                 _player.ShootingEnabled = false;
                 _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
             }
+            ResetReceptionState(1f);
+            HideRecoveryHud();
+            RestoreRecoveryShakeTarget();
 
             if (_hudRoot != null) _hudRoot.SetActive(false);
             _scorePanel?.HideImmediate();
@@ -780,6 +831,7 @@ namespace SoccerBot
             {
                 _player.ShootingEnabled = false;
                 _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
             }
             if (_teammateTransform != null && _playerTransform != null)
             {
@@ -815,22 +867,55 @@ namespace SoccerBot
             _ball.Detach();
             Vector3 startPos = _robotTransform.TransformPoint(_ballOffsetRobot);
             Vector3 endPos = _playerTransform.TransformPoint(_ballOffsetPlayer);
+            ResetReceptionState(0f);
+            _currentPassStart = startPos;
+            _currentPassEnd = endPos;
+            if (_player != null)
+            {
+                _player.ReceptionEnabled = true;
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+            }
 
             float t = 0f;
             while (t < _passFlightTime)
             {
                 t += Time.deltaTime;
                 float u = Mathf.Clamp01(t / _passFlightTime);
+                _passProgress01 = u;
                 Vector3 pos = Vector3.Lerp(startPos, endPos, u);
                 pos.y += _passApex * 4f * u * (1f - u);
                 _ball.transform.position = pos;
                 yield return null;
             }
             _ball.transform.position = endPos;
+            _passProgress01 = 1f;
+            if (_player != null) _player.ReceptionEnabled = false;
+            if (!_receiveAttempted)
+            {
+                _receiveQuality = 0.12f;
+                Debug.Log("[MatchFlow] Receive missed: no player input during pass.");
+            }
         }
 
         private IEnumerator DoPossession()
         {
+            CurrentPhase = Phase.Possession;
+            if (_receiveQuality < _minimumPossessionReceiveQuality)
+            {
+                Debug.Log($"[MatchFlow] Poor first touch ({_receiveQuality:0.00}); opponent wins the ball.");
+                if (_enableRecoveryMash)
+                {
+                    yield return DoRecoveryBattle();
+                    if (!_recoverySucceeded) yield break;
+                }
+                else
+                {
+                    ResolveRecoveryFailure();
+                    yield break;
+                }
+            }
+
             CurrentPhase = Phase.Possession;
             if (_ball != null && _playerTransform != null)
             {
@@ -881,6 +966,395 @@ namespace SoccerBot
             yield return new WaitForSeconds(_cooldownDuration);
         }
 
+        private IEnumerator DoRecoveryBattle()
+        {
+            CurrentPhase = Phase.Recovery;
+            _recoverySucceeded = false;
+            _recoveryPressCount = 0;
+            _recoveryPersistentPush = 0f;
+            _recoveryPressPulse = 0f;
+
+            if (_player != null)
+            {
+                _player.ReceptionEnabled = true;
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+            }
+            if (_ball != null) _ball.Detach();
+
+            EnsureRecoveryHud();
+            ShowRecoveryHud();
+            CaptureRecoveryShakeTarget();
+
+            Vector3 backDir = GetRecoveryBackDirection();
+            Vector3 opponentStart = _opponentTransform != null ? _opponentTransform.position : Vector3.zero;
+            float elapsed = 0f;
+            float maxPushBeforeSuccess = _recoverySuccessKnockback * 0.85f;
+
+            while (elapsed < _recoveryDuration && !_recoverySucceeded)
+            {
+                elapsed += Time.deltaTime;
+
+                bool held = _player != null && _player.ReceiveInputHeld;
+                _recoveryPersistentPush = Mathf.Min(_recoveryPersistentPush, maxPushBeforeSuccess);
+                float heldPush = held ? _recoveryHeldPush : 0f;
+                Vector3 targetOpponentPos = opponentStart + backDir * (_recoveryPersistentPush + heldPush);
+
+                if (_opponentTransform != null)
+                {
+                    _opponentTransform.position = Vector3.Lerp(
+                        _opponentTransform.position,
+                        targetOpponentPos,
+                        Time.deltaTime * _recoveryOpponentLerpSpeed);
+                }
+
+                UpdateContestedBall(backDir);
+                _recoveryPressPulse = Mathf.MoveTowards(_recoveryPressPulse, 0f, Time.deltaTime * 5f);
+                UpdateRecoveryHud(elapsed / _recoveryDuration, held, false, false);
+                ApplyRecoveryShake(Mathf.Clamp01(0.35f + _recoveryPressPulse));
+                yield return null;
+            }
+
+            if (_player != null) _player.ReceptionEnabled = false;
+            RestoreRecoveryShakeTarget();
+
+            if (_recoverySucceeded)
+            {
+                yield return PlayRecoverySuccess(backDir);
+                _receiveQuality = Mathf.Max(_minimumPossessionReceiveQuality + 0.18f, 0.45f);
+                CurrentPhase = Phase.Possession;
+            }
+            else
+            {
+                yield return PlayRecoveryFailure(backDir);
+                ResolveRecoveryFailure();
+            }
+
+            HideRecoveryHud();
+        }
+
+        private void HandleReceiveAttempt(Vector3 direction)
+        {
+            if (!_isMatchRunning) return;
+            if (CurrentPhase == Phase.Recovery)
+            {
+                HandleRecoveryPress();
+                return;
+            }
+
+            if (CurrentPhase != Phase.Pass) return;
+            if (_receiveAttempted) return;
+
+            _receiveAttempted = true;
+            _receiveQuality = EvaluateReceiveQuality(direction);
+            if (_player != null) _player.ReceptionEnabled = false;
+            Debug.Log($"[MatchFlow] Receive quality: {_receiveQuality:0.00}");
+        }
+
+        private void HandleRecoveryPress()
+        {
+            if (CurrentPhase != Phase.Recovery || _recoverySucceeded) return;
+
+            _recoveryPressCount++;
+            _recoveryPressPulse = 1f;
+            _recoveryPersistentPush += _recoveryPushPerPress;
+
+            if (_recoveryPressCount >= _recoveryPressTarget)
+                _recoverySucceeded = true;
+        }
+
+        private void ResolveRecoveryFailure()
+        {
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null) _ball.Detach();
+            if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
+            if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(0);
+        }
+
+        private void ResetReceptionState(float defaultQuality)
+        {
+            _passProgress01 = 0f;
+            _receiveAttempted = false;
+            _receiveQuality = Mathf.Clamp01(defaultQuality);
+            _currentPassStart = Vector3.zero;
+            _currentPassEnd = Vector3.zero;
+        }
+
+        private float EvaluateReceiveQuality(Vector3 playerFacing)
+        {
+            float start = Mathf.Min(_receiveWindowStart01, _receiveWindowEnd01);
+            float end = Mathf.Max(_receiveWindowStart01, _receiveWindowEnd01);
+            float perfect = Mathf.Clamp(_receivePerfect01, start, end);
+            if (_passProgress01 < start || _passProgress01 > end)
+                return 0.05f;
+
+            float span = _passProgress01 <= perfect
+                ? Mathf.Max(0.0001f, perfect - start)
+                : Mathf.Max(0.0001f, end - perfect);
+            float timingScore = 1f - Mathf.Clamp01(Mathf.Abs(_passProgress01 - perfect) / span);
+
+            Vector3 facing = Flatten(playerFacing);
+            Vector3 incoming = Vector3.zero;
+            if (_playerTransform != null && _ball != null)
+                incoming = Flatten(_ball.transform.position - _playerTransform.position);
+            if (incoming.sqrMagnitude < 0.0001f)
+                incoming = Flatten(_currentPassStart - _currentPassEnd);
+
+            float facingScore = 1f;
+            if (facing.sqrMagnitude > 0.0001f && incoming.sqrMagnitude > 0.0001f)
+            {
+                float angle = Vector3.Angle(facing.normalized, incoming.normalized);
+                facingScore = Mathf.InverseLerp(_receiveFacingFailAngle, _receiveFacingFullScoreAngle, angle);
+            }
+
+            return Mathf.Clamp01(timingScore * 0.75f + facingScore * 0.25f);
+        }
+
+        private static Vector3 Flatten(Vector3 v)
+        {
+            v.y = 0f;
+            return v;
+        }
+
+        private Vector3 GetRecoveryBackDirection()
+        {
+            if (_opponentTransform != null && _playerTransform != null)
+            {
+                Vector3 away = Flatten(_opponentTransform.position - _playerTransform.position);
+                if (away.sqrMagnitude > 0.0001f)
+                    return away.normalized;
+            }
+
+            return GetAttackForward();
+        }
+
+        private void UpdateContestedBall(Vector3 backDir)
+        {
+            if (_ball == null || _playerTransform == null || _opponentTransform == null) return;
+
+            Vector3 playerBallPos = _playerTransform.TransformPoint(_ballOffsetPlayer);
+            Vector3 opponentBallPos = _opponentTransform.position + Vector3.up * 0.35f - backDir * 0.25f;
+            float win01 = Mathf.Clamp01((float)_recoveryPressCount / Mathf.Max(1, _recoveryPressTarget));
+            Vector3 target = Vector3.Lerp(opponentBallPos, playerBallPos, win01 * 0.82f);
+            target.y += Mathf.Sin(Time.time * 24f) * 0.035f * _recoveryPressPulse;
+            _ball.transform.position = Vector3.Lerp(_ball.transform.position, target, Time.deltaTime * 12f);
+        }
+
+        private IEnumerator PlayRecoverySuccess(Vector3 backDir)
+        {
+            UpdateRecoveryHud(1f, false, true, false);
+
+            Vector3 opponentFrom = _opponentTransform != null ? _opponentTransform.position : Vector3.zero;
+            Vector3 opponentTo = opponentFrom + backDir * _recoverySuccessKnockback;
+            Vector3 ballFrom = _ball != null ? _ball.transform.position : Vector3.zero;
+            Vector3 ballTo = _playerTransform != null ? _playerTransform.TransformPoint(_ballOffsetPlayer) : ballFrom;
+
+            float t = 0f;
+            const float duration = 0.45f;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / duration);
+                float eased = 1f - Mathf.Pow(1f - u, 3f);
+                if (_opponentTransform != null)
+                    _opponentTransform.position = Vector3.Lerp(opponentFrom, opponentTo, eased);
+                if (_ball != null)
+                    _ball.transform.position = Vector3.Lerp(ballFrom, ballTo, eased);
+                ApplyRecoveryShake(1f - u);
+                yield return null;
+            }
+            RestoreRecoveryShakeTarget();
+        }
+
+        private IEnumerator PlayRecoveryFailure(Vector3 backDir)
+        {
+            UpdateRecoveryHud(1f, false, false, true);
+
+            Vector3 opponentFrom = _opponentTransform != null ? _opponentTransform.position : Vector3.zero;
+            Vector3 opponentTo = opponentFrom - backDir * _recoveryFailSurgeDistance;
+            Vector3 ballFrom = _ball != null ? _ball.transform.position : Vector3.zero;
+            Vector3 ballTo = opponentTo + Vector3.up * 0.35f - backDir * 0.15f;
+
+            float t = 0f;
+            const float duration = 0.38f;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / duration);
+                float eased = 1f - Mathf.Pow(1f - u, 2f);
+                if (_opponentTransform != null)
+                    _opponentTransform.position = Vector3.Lerp(opponentFrom, opponentTo, eased);
+                if (_ball != null)
+                    _ball.transform.position = Vector3.Lerp(ballFrom, ballTo, eased);
+                ApplyRecoveryShake(1f);
+                yield return null;
+            }
+            RestoreRecoveryShakeTarget();
+            yield return new WaitForSeconds(0.15f);
+        }
+
+        private void CaptureRecoveryShakeTarget()
+        {
+            _recoveryShakeTarget = _fpsCamera != null ? _fpsCamera : null;
+            if (_recoveryShakeTarget != null)
+                _recoveryShakeBaseLocalPos = _recoveryShakeTarget.localPosition;
+        }
+
+        private void ApplyRecoveryShake(float intensity)
+        {
+            if (_recoveryShakeTarget == null) return;
+
+            float z = Mathf.Sin(Time.unscaledTime * _recoveryShakeFrequency) * _recoveryShakeAmplitude * intensity;
+            _recoveryShakeTarget.localPosition = _recoveryShakeBaseLocalPos + Vector3.forward * z;
+        }
+
+        private void RestoreRecoveryShakeTarget()
+        {
+            if (_recoveryShakeTarget != null)
+                _recoveryShakeTarget.localPosition = _recoveryShakeBaseLocalPos;
+            _recoveryShakeTarget = null;
+        }
+
+        private void EnsureRecoveryHud()
+        {
+            if (_recoveryHudRoot != null) return;
+
+            var root = new GameObject("RecoveryMashHUD", typeof(RectTransform));
+            var canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 1200;
+
+            var scaler = root.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            root.AddComponent<GraphicRaycaster>();
+
+            _recoveryHudGroup = root.AddComponent<CanvasGroup>();
+            _recoveryHudGroup.alpha = 0f;
+            _recoveryHudGroup.interactable = false;
+            _recoveryHudGroup.blocksRaycasts = false;
+            _recoveryHudRoot = root.GetComponent<RectTransform>();
+
+            _recoveryBorderImages.Clear();
+            _recoveryBorderImages.Add(CreateRecoveryImage("TopSpikeBorder", root.transform, new Color(1f, 0.08f, 0.02f, 0.35f), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -34f), new Vector2(0f, 0f)));
+            _recoveryBorderImages.Add(CreateRecoveryImage("BottomSpikeBorder", root.transform, new Color(1f, 0.08f, 0.02f, 0.35f), new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(0f, 34f)));
+            _recoveryBorderImages.Add(CreateRecoveryImage("LeftSpikeBorder", root.transform, new Color(1f, 0.08f, 0.02f, 0.28f), new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(28f, 0f)));
+            _recoveryBorderImages.Add(CreateRecoveryImage("RightSpikeBorder", root.transform, new Color(1f, 0.08f, 0.02f, 0.28f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-28f, 0f), new Vector2(0f, 0f)));
+
+            _recoveryPromptLabel = CreateRecoveryText("RecoveryPrompt", root.transform, "MASH TO WIN THE BALL", 46, new Vector2(0.5f, 1f), new Vector2(0f, -92f), new Vector2(900f, 80f));
+            _recoveryMeterLabel = CreateRecoveryText("RecoveryMeter", root.transform, "0/0", 30, new Vector2(0.5f, 1f), new Vector2(0f, -282f), new Vector2(900f, 60f));
+
+            var buttonGo = new GameObject("RecoveryButton", typeof(RectTransform), typeof(Image));
+            buttonGo.transform.SetParent(root.transform, false);
+            _recoveryButtonRect = buttonGo.GetComponent<RectTransform>();
+            _recoveryButtonRect.anchorMin = new Vector2(0.5f, 1f);
+            _recoveryButtonRect.anchorMax = new Vector2(0.5f, 1f);
+            _recoveryButtonRect.sizeDelta = new Vector2(150f, 150f);
+            _recoveryButtonRect.anchoredPosition = new Vector2(0f, -190f);
+            var buttonImage = buttonGo.GetComponent<Image>();
+            buttonImage.color = new Color(1f, 0.18f, 0.05f, 0.78f);
+            buttonImage.raycastTarget = false;
+
+            var buttonText = CreateRecoveryText("RecoveryButtonText", buttonGo.transform, "TAP", 40, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(150f, 90f));
+            buttonText.color = Color.white;
+
+            root.SetActive(false);
+        }
+
+        private Image CreateRecoveryImage(string name, Transform parent, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchorMin;
+            rt.anchorMax = anchorMax;
+            rt.offsetMin = offsetMin;
+            rt.offsetMax = offsetMax;
+            var image = go.GetComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private TextMeshProUGUI CreateRecoveryText(string name, Transform parent, string text, int fontSize, Vector2 anchor, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchor;
+            rt.anchorMax = anchor;
+            rt.sizeDelta = size;
+            rt.anchoredPosition = position;
+            var label = go.GetComponent<TextMeshProUGUI>();
+            label.text = text;
+            label.fontSize = fontSize;
+            label.alignment = TextAlignmentOptions.Center;
+            label.enableWordWrapping = false;
+            label.color = Color.white;
+            label.raycastTarget = false;
+            return label;
+        }
+
+        private void ShowRecoveryHud()
+        {
+            if (_recoveryHudRoot == null) return;
+            _recoveryHudRoot.gameObject.SetActive(true);
+            if (_recoveryHudGroup != null) _recoveryHudGroup.alpha = 1f;
+            UpdateRecoveryHud(0f, false, false, false);
+        }
+
+        private void HideRecoveryHud()
+        {
+            if (_recoveryHudGroup != null) _recoveryHudGroup.alpha = 0f;
+            if (_recoveryHudRoot != null)
+            {
+                _recoveryHudRoot.localScale = Vector3.one;
+                _recoveryHudRoot.gameObject.SetActive(false);
+            }
+        }
+
+        private void UpdateRecoveryHud(float time01, bool held, bool success, bool failed)
+        {
+            if (_recoveryHudRoot == null) return;
+
+            float progress01 = Mathf.Clamp01((float)_recoveryPressCount / Mathf.Max(1, _recoveryPressTarget));
+            if (_recoveryPromptLabel != null)
+            {
+                _recoveryPromptLabel.text = success
+                    ? "BALL WON"
+                    : failed
+                        ? "BALL LOST"
+                        : "MASH TO WIN THE BALL";
+            }
+            if (_recoveryMeterLabel != null)
+            {
+                int filledBars = Mathf.Clamp(Mathf.RoundToInt(progress01 * 20f), 0, 20);
+                string meter = new string('|', filledBars) + new string('.', 20 - filledBars);
+                _recoveryMeterLabel.text = $"{_recoveryPressCount}/{_recoveryPressTarget}  [{meter}]";
+            }
+
+            float pulse = 1f + _recoveryPressPulse * 0.22f + (held ? 0.10f : 0f);
+            if (_recoveryButtonRect != null)
+                _recoveryButtonRect.localScale = Vector3.one * pulse;
+
+            float borderAlpha = success ? 0.65f : failed ? 0.85f : 0.35f + Mathf.Sin(Time.unscaledTime * 28f) * 0.12f + _recoveryPressPulse * 0.18f;
+            for (int i = 0; i < _recoveryBorderImages.Count; i++)
+            {
+                if (_recoveryBorderImages[i] == null) continue;
+                Color c = success ? new Color(0.1f, 0.95f, 0.35f, borderAlpha) : new Color(1f, 0.08f, 0.02f, borderAlpha);
+                _recoveryBorderImages[i].color = c;
+            }
+
+            float scalePulse = 1f + Mathf.Sin(Time.unscaledTime * _recoveryShakeFrequency) * _recoveryShakeAmplitude * 0.35f;
+            _recoveryHudRoot.localScale = Vector3.one * scalePulse;
+        }
+
         private void HandlePlayerShot(float power01, Vector3 direction)
         {
             if (!_isMatchRunning || CurrentPhase != Phase.Possession) return;
@@ -890,10 +1364,12 @@ namespace SoccerBot
             {
                 _player.ShootingEnabled = false;
                 _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
             }
             if (_ball != null) _ball.Detach();
 
-            float effectivePower = Mathf.Clamp01(power01 + UnityEngine.Random.Range(-_randomJitter, _randomJitter));
+            float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
+            float effectivePower = Mathf.Clamp01(power01 + receiveBias + UnityEngine.Random.Range(-_randomJitter, _randomJitter));
 
             if (effectivePower >= _scoreThreshold)
             {
