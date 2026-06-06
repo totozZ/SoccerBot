@@ -143,10 +143,7 @@ namespace SoccerBot
         private bool _receiveAttempted;
         private Vector3 _currentPassStart;
         private Vector3 _currentPassEnd;
-        private bool _recoverySucceeded;
-        private int _recoveryPressCount;
-        private float _recoveryPersistentPush;
-        private float _recoveryPressPulse;
+        private RecoveryMashState _recoveryMash;
         private Transform _recoveryShakeTarget;
         private Vector3 _recoveryShakeBaseLocalPos;
         private CanvasGroup _recoveryHudGroup;
@@ -907,7 +904,7 @@ namespace SoccerBot
                 if (_enableRecoveryMash)
                 {
                     yield return DoRecoveryBattle();
-                    if (!_recoverySucceeded) yield break;
+                    if (_recoveryMash == null || !_recoveryMash.Succeeded) yield break;
                 }
                 else
                 {
@@ -969,10 +966,11 @@ namespace SoccerBot
         private IEnumerator DoRecoveryBattle()
         {
             CurrentPhase = Phase.Recovery;
-            _recoverySucceeded = false;
-            _recoveryPressCount = 0;
-            _recoveryPersistentPush = 0f;
-            _recoveryPressPulse = 0f;
+            _recoveryMash = new RecoveryMashState(
+                _recoveryPressTarget,
+                _recoveryPushPerPress,
+                _recoverySuccessKnockback);
+            _recoveryMash.Reset();
 
             if (_player != null)
             {
@@ -989,16 +987,15 @@ namespace SoccerBot
             Vector3 backDir = GetRecoveryBackDirection();
             Vector3 opponentStart = _opponentTransform != null ? _opponentTransform.position : Vector3.zero;
             float elapsed = 0f;
-            float maxPushBeforeSuccess = _recoverySuccessKnockback * 0.85f;
 
-            while (elapsed < _recoveryDuration && !_recoverySucceeded)
+            while (elapsed < _recoveryDuration && !_recoveryMash.Succeeded)
             {
                 elapsed += Time.deltaTime;
 
                 bool held = _player != null && _player.ReceiveInputHeld;
-                _recoveryPersistentPush = Mathf.Min(_recoveryPersistentPush, maxPushBeforeSuccess);
+                _recoveryMash.Tick(Time.deltaTime);
                 float heldPush = held ? _recoveryHeldPush : 0f;
-                Vector3 targetOpponentPos = opponentStart + backDir * (_recoveryPersistentPush + heldPush);
+                Vector3 targetOpponentPos = opponentStart + backDir * (_recoveryMash.PersistentPush + heldPush);
 
                 if (_opponentTransform != null)
                 {
@@ -1009,16 +1006,15 @@ namespace SoccerBot
                 }
 
                 UpdateContestedBall(backDir);
-                _recoveryPressPulse = Mathf.MoveTowards(_recoveryPressPulse, 0f, Time.deltaTime * 5f);
                 UpdateRecoveryHud(elapsed / _recoveryDuration, held, false, false);
-                ApplyRecoveryShake(Mathf.Clamp01(0.35f + _recoveryPressPulse));
+                ApplyRecoveryShake(Mathf.Clamp01(0.35f + _recoveryMash.PressPulse));
                 yield return null;
             }
 
             if (_player != null) _player.ReceptionEnabled = false;
             RestoreRecoveryShakeTarget();
 
-            if (_recoverySucceeded)
+            if (_recoveryMash.Succeeded)
             {
                 yield return PlayRecoverySuccess(backDir);
                 _receiveQuality = Mathf.Max(_minimumPossessionReceiveQuality + 0.18f, 0.45f);
@@ -1053,14 +1049,8 @@ namespace SoccerBot
 
         private void HandleRecoveryPress()
         {
-            if (CurrentPhase != Phase.Recovery || _recoverySucceeded) return;
-
-            _recoveryPressCount++;
-            _recoveryPressPulse = 1f;
-            _recoveryPersistentPush += _recoveryPushPerPress;
-
-            if (_recoveryPressCount >= _recoveryPressTarget)
-                _recoverySucceeded = true;
+            if (CurrentPhase != Phase.Recovery || _recoveryMash == null) return;
+            _recoveryMash.RegisterPress();
         }
 
         private void ResolveRecoveryFailure()
@@ -1088,38 +1078,27 @@ namespace SoccerBot
 
         private float EvaluateReceiveQuality(Vector3 playerFacing)
         {
-            float start = Mathf.Min(_receiveWindowStart01, _receiveWindowEnd01);
-            float end = Mathf.Max(_receiveWindowStart01, _receiveWindowEnd01);
-            float perfect = Mathf.Clamp(_receivePerfect01, start, end);
-            if (_passProgress01 < start || _passProgress01 > end)
-                return 0.05f;
-
-            float span = _passProgress01 <= perfect
-                ? Mathf.Max(0.0001f, perfect - start)
-                : Mathf.Max(0.0001f, end - perfect);
-            float timingScore = 1f - Mathf.Clamp01(Mathf.Abs(_passProgress01 - perfect) / span);
-
-            Vector3 facing = Flatten(playerFacing);
             Vector3 incoming = Vector3.zero;
             if (_playerTransform != null && _ball != null)
                 incoming = Flatten(_ball.transform.position - _playerTransform.position);
             if (incoming.sqrMagnitude < 0.0001f)
                 incoming = Flatten(_currentPassStart - _currentPassEnd);
 
-            float facingScore = 1f;
-            if (facing.sqrMagnitude > 0.0001f && incoming.sqrMagnitude > 0.0001f)
-            {
-                float angle = Vector3.Angle(facing.normalized, incoming.normalized);
-                facingScore = Mathf.InverseLerp(_receiveFacingFailAngle, _receiveFacingFullScoreAngle, angle);
-            }
-
-            return Mathf.Clamp01(timingScore * 0.75f + facingScore * 0.25f);
+            return ReceptionRules.EvaluateQuality(
+                _passProgress01,
+                playerFacing,
+                incoming,
+                new ReceptionTuning(
+                    _receiveWindowStart01,
+                    _receivePerfect01,
+                    _receiveWindowEnd01,
+                    _receiveFacingFullScoreAngle,
+                    _receiveFacingFailAngle));
         }
 
         private static Vector3 Flatten(Vector3 v)
         {
-            v.y = 0f;
-            return v;
+            return ReceptionRules.Flatten(v);
         }
 
         private Vector3 GetRecoveryBackDirection()
@@ -1140,9 +1119,11 @@ namespace SoccerBot
 
             Vector3 playerBallPos = _playerTransform.TransformPoint(_ballOffsetPlayer);
             Vector3 opponentBallPos = _opponentTransform.position + Vector3.up * 0.35f - backDir * 0.25f;
-            float win01 = Mathf.Clamp01((float)_recoveryPressCount / Mathf.Max(1, _recoveryPressTarget));
+            int pressCount = _recoveryMash != null ? _recoveryMash.PressCount : 0;
+            float pressPulse = _recoveryMash != null ? _recoveryMash.PressPulse : 0f;
+            float win01 = Mathf.Clamp01((float)pressCount / Mathf.Max(1, _recoveryPressTarget));
             Vector3 target = Vector3.Lerp(opponentBallPos, playerBallPos, win01 * 0.82f);
-            target.y += Mathf.Sin(Time.time * 24f) * 0.035f * _recoveryPressPulse;
+            target.y += Mathf.Sin(Time.time * 24f) * 0.035f * pressPulse;
             _ball.transform.position = Vector3.Lerp(_ball.transform.position, target, Time.deltaTime * 12f);
         }
 
@@ -1323,7 +1304,9 @@ namespace SoccerBot
         {
             if (_recoveryHudRoot == null) return;
 
-            float progress01 = Mathf.Clamp01((float)_recoveryPressCount / Mathf.Max(1, _recoveryPressTarget));
+            int pressCount = _recoveryMash != null ? _recoveryMash.PressCount : 0;
+            float pressPulse = _recoveryMash != null ? _recoveryMash.PressPulse : 0f;
+            float progress01 = Mathf.Clamp01((float)pressCount / Mathf.Max(1, _recoveryPressTarget));
             if (_recoveryPromptLabel != null)
             {
                 _recoveryPromptLabel.text = success
@@ -1336,14 +1319,14 @@ namespace SoccerBot
             {
                 int filledBars = Mathf.Clamp(Mathf.RoundToInt(progress01 * 20f), 0, 20);
                 string meter = new string('|', filledBars) + new string('.', 20 - filledBars);
-                _recoveryMeterLabel.text = $"{_recoveryPressCount}/{_recoveryPressTarget}  [{meter}]";
+                _recoveryMeterLabel.text = $"{pressCount}/{_recoveryPressTarget}  [{meter}]";
             }
 
-            float pulse = 1f + _recoveryPressPulse * 0.22f + (held ? 0.10f : 0f);
+            float pulse = 1f + pressPulse * 0.22f + (held ? 0.10f : 0f);
             if (_recoveryButtonRect != null)
                 _recoveryButtonRect.localScale = Vector3.one * pulse;
 
-            float borderAlpha = success ? 0.65f : failed ? 0.85f : 0.35f + Mathf.Sin(Time.unscaledTime * 28f) * 0.12f + _recoveryPressPulse * 0.18f;
+            float borderAlpha = success ? 0.65f : failed ? 0.85f : 0.35f + Mathf.Sin(Time.unscaledTime * 28f) * 0.12f + pressPulse * 0.18f;
             for (int i = 0; i < _recoveryBorderImages.Count; i++)
             {
                 if (_recoveryBorderImages[i] == null) continue;
