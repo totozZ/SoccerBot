@@ -168,6 +168,8 @@ VR 手柄是手，不是脚。
 - Meta Movement SDK 角色重定向
 - BLE SmartBall 真实协议解析
 - 大型 UI 节奏小游戏
+- Limelight/LL + AprilTag 机器人定位
+- 机器人与 VR 的真实空间联动追踪
 
 第一版只回答一个问题：
 
