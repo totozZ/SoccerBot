@@ -27,6 +27,8 @@ namespace SoccerBot
         [SerializeField] private ScorePanel _scorePanel;
         [SerializeField] private ScoreBoard _scoreBoard;
         [SerializeField] private GameObject _hudRoot;
+        [SerializeField] private ReceptionPromptPresenter _receptionPrompt;
+        [SerializeField] private ReceptionTargetIndicator _receptionTargetIndicator;
 
         [Header("Ball Offsets")]
         [SerializeField] private Vector3 _ballOffsetRobot = new(0f, 1.0f, 0.4f);
@@ -232,6 +234,8 @@ namespace SoccerBot
             RestoreRecoveryShakeTarget();
 
             if (_hudRoot != null) _hudRoot.SetActive(false);
+            _receptionPrompt?.Hide();
+            _receptionTargetIndicator?.Hide();
             _scorePanel?.HideImmediate();
             if (_ball != null && _robotTransform != null)
                 _ball.AttachTo(_robotTransform, _ballOffsetRobot);
@@ -322,6 +326,19 @@ namespace SoccerBot
                 var hud = GameObject.Find("HUD");
                 if (hud != null) _hudRoot = hud;
             }
+            if (_receptionPrompt == null)
+                _receptionPrompt = FindFirstObjectByType<ReceptionPromptPresenter>(FindObjectsInactive.Include);
+            if (_receptionPrompt == null)
+                _receptionPrompt = gameObject.AddComponent<ReceptionPromptPresenter>();
+            _receptionPrompt.Configure(_fpsCamera != null ? _fpsCamera : _fpsAnchor);
+            if (_receptionTargetIndicator == null)
+                _receptionTargetIndicator = FindFirstObjectByType<ReceptionTargetIndicator>(FindObjectsInactive.Include);
+            if (_receptionTargetIndicator == null)
+            {
+                var indicatorGo = new GameObject("ReceptionTargetIndicator");
+                _receptionTargetIndicator = indicatorGo.AddComponent<ReceptionTargetIndicator>();
+            }
+            _receptionTargetIndicator.Hide();
             if (_mainMenu == null) _mainMenu = FindFirstObjectByType<MainMenuPanel>(FindObjectsInactive.Include);
         }
 
@@ -380,6 +397,11 @@ namespace SoccerBot
         {
             Vector3 forward = GetAttackForward();
             return new Vector3(forward.z, 0f, -forward.x).normalized;
+        }
+
+        private static bool UseQuestPromptText()
+        {
+            return Application.platform == RuntimePlatform.Android;
         }
 
         private void EnsureFarGoalTargets()
@@ -867,6 +889,13 @@ namespace SoccerBot
             ResetReceptionState(0f);
             _currentPassStart = startPos;
             _currentPassEnd = endPos;
+            _receptionTargetIndicator?.Show(endPos);
+            _receptionPrompt?.ShowPassProgress(
+                _passProgress01,
+                _receiveWindowStart01,
+                _receivePerfect01,
+                _receiveWindowEnd01,
+                UseQuestPromptText());
             if (_player != null)
             {
                 _player.ReceptionEnabled = true;
@@ -880,6 +909,20 @@ namespace SoccerBot
                 t += Time.deltaTime;
                 float u = Mathf.Clamp01(t / _passFlightTime);
                 _passProgress01 = u;
+                if (!_receiveAttempted)
+                {
+                    _receptionPrompt?.ShowPassProgress(
+                        _passProgress01,
+                        _receiveWindowStart01,
+                        _receivePerfect01,
+                        _receiveWindowEnd01,
+                        UseQuestPromptText());
+                    _receptionTargetIndicator?.UpdateProgress(
+                        _passProgress01,
+                        _receiveWindowStart01,
+                        _receivePerfect01,
+                        _receiveWindowEnd01);
+                }
                 Vector3 pos = Vector3.Lerp(startPos, endPos, u);
                 pos.y += _passApex * 4f * u * (1f - u);
                 _ball.transform.position = pos;
@@ -891,6 +934,8 @@ namespace SoccerBot
             if (!_receiveAttempted)
             {
                 _receiveQuality = 0.12f;
+                _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, false, 1.5f);
+                _receptionTargetIndicator?.ShowFeedback(_receiveQuality, false);
                 Debug.Log("[MatchFlow] Receive missed: no player input during pass.");
             }
         }
@@ -901,6 +946,7 @@ namespace SoccerBot
             if (_receiveQuality < _minimumPossessionReceiveQuality)
             {
                 Debug.Log($"[MatchFlow] Poor first touch ({_receiveQuality:0.00}); opponent wins the ball.");
+                _receptionPrompt?.ShowRecovery();
                 if (_enableRecoveryMash)
                 {
                     yield return DoRecoveryBattle();
@@ -924,6 +970,7 @@ namespace SoccerBot
                 _player.ShootingEnabled = true;
                 _player.MovementEnabled = true;
             }
+            _receptionPrompt?.ShowPossession(_receiveQuality, UseQuestPromptText());
 
             while (CurrentPhase == Phase.Possession)
             {
@@ -1044,6 +1091,8 @@ namespace SoccerBot
             _receiveAttempted = true;
             _receiveQuality = EvaluateReceiveQuality(direction);
             if (_player != null) _player.ReceptionEnabled = false;
+            _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, true, 1.2f);
+            _receptionTargetIndicator?.ShowFeedback(_receiveQuality, true);
             Debug.Log($"[MatchFlow] Receive quality: {_receiveQuality:0.00}");
         }
 
@@ -1353,6 +1402,7 @@ namespace SoccerBot
 
             float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
             float effectivePower = Mathf.Clamp01(power01 + receiveBias + UnityEngine.Random.Range(-_randomJitter, _randomJitter));
+            _receptionPrompt?.ShowShotBias(receiveBias);
 
             if (effectivePower >= _scoreThreshold)
             {

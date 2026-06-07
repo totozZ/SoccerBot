@@ -36,6 +36,17 @@ namespace SoccerBot
         [Tooltip("Seconds of holding LMB to reach full power (1.0).")]
         [SerializeField] private float _maxChargeTime = 1.5f;
 
+        [Header("Motion Shot")]
+        [Tooltip("Right-trigger motion shot: minimum pull-back distance before release can fire.")]
+        [SerializeField] private float _motionShotMinBackswing = 0.12f;
+        [Tooltip("Right-trigger motion shot: pull-back distance that counts as full backswing.")]
+        [SerializeField] private float _motionShotFullBackswing = 0.55f;
+        [Tooltip("Right-trigger motion shot: minimum forward hand speed before release can fire.")]
+        [SerializeField] private float _motionShotMinForwardSpeed = 0.65f;
+        [Tooltip("Right-trigger motion shot: forward hand speed that counts as full power.")]
+        [SerializeField] private float _motionShotFullForwardSpeed = 3.2f;
+        [SerializeField, Range(0f, 1f)] private float _motionShotSwingDirectionWeight = 0.35f;
+
         [Header("Aim Feedback (optional)")]
         [SerializeField] private float _chargeRecoilOffset = 0.08f;
 
@@ -45,8 +56,10 @@ namespace SoccerBot
         public event Action OnChargeBegin;
         public event Action OnChargeCancel;
 
-        public bool IsCharging => _charging;
-        public float CurrentPower01 => _charging ? Mathf.Clamp01(_chargeTime / _maxChargeTime) : 0f;
+        public bool IsCharging => _charging || _motionCharging;
+        public float CurrentPower01 => _charging
+            ? Mathf.Clamp01(_chargeTime / _maxChargeTime)
+            : (_motionCharging ? _motionPower01 : 0f);
         public bool ReceiveInputHeld => _receiveAction != null && _receiveAction.IsPressed();
         public bool ShootingEnabled { get; set; } = false;   // gated by MatchFlowController
         public bool MovementEnabled { get; set; } = false;   // gated by MatchFlowController (only true during Possession)
@@ -55,24 +68,45 @@ namespace SoccerBot
         private float _yaw;
         private float _pitch;
         private bool  _charging;
+        private bool _motionCharging;
         private float _chargeTime;
+        private float _motionBackswing;
+        private float _motionForwardSpeed;
+        private float _motionPower01;
         private Vector3 _cameraRestLocalPos;
+        private Vector3 _motionStartHandPos;
+        private Vector3 _motionLastHandPos;
+        private Vector3 _motionBestForwardVelocity;
 
         // Multi-source shoot trigger so PC mouse, Quest trigger, and Quest A button
         // all work without an Input Actions asset. Created in OnEnable, disposed in OnDisable.
-        private InputAction _shootAction;
+        private InputAction _chargeAction;
+        private InputAction _motionShootAction;
+        private InputAction _rightHandPositionAction;
+        private InputAction _rightHandVelocityAction;
         private InputAction _receiveAction;
         private InputAction _moveAction;   // Quest left thumbstick (Vector2)
 
         void OnEnable()
         {
-            _shootAction = new InputAction("Shoot", InputActionType.Button);
-            _shootAction.AddBinding("<Mouse>/leftButton");
-            _shootAction.AddBinding("<XRController>{RightHand}/triggerPressed");
-            _shootAction.AddBinding("<XRController>{RightHand}/primaryButton");   // Quest A button
-            _shootAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
-            _shootAction.AddBinding("<XRController>{LeftHand}/primaryButton");    // Quest X button
-            _shootAction.Enable();
+            _chargeAction = new InputAction("ChargeShot", InputActionType.Button);
+            _chargeAction.AddBinding("<Mouse>/leftButton");
+            _chargeAction.AddBinding("<XRController>{RightHand}/primaryButton");   // Quest A button
+            _chargeAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
+            _chargeAction.AddBinding("<XRController>{LeftHand}/primaryButton");    // Quest X button
+            _chargeAction.Enable();
+
+            _motionShootAction = new InputAction("MotionShot", InputActionType.Button);
+            _motionShootAction.AddBinding("<XRController>{RightHand}/triggerPressed");
+            _motionShootAction.Enable();
+
+            _rightHandPositionAction = new InputAction("RightHandPosition", InputActionType.Value, expectedControlType: "Vector3");
+            _rightHandPositionAction.AddBinding("<XRController>{RightHand}/devicePosition");
+            _rightHandPositionAction.Enable();
+
+            _rightHandVelocityAction = new InputAction("RightHandVelocity", InputActionType.Value, expectedControlType: "Vector3");
+            _rightHandVelocityAction.AddBinding("<XRController>{RightHand}/deviceVelocity");
+            _rightHandVelocityAction.Enable();
 
             _receiveAction = new InputAction("Receive", InputActionType.Button);
             _receiveAction.AddBinding("<Keyboard>/space");
@@ -89,11 +123,29 @@ namespace SoccerBot
 
         void OnDisable()
         {
-            if (_shootAction != null)
+            if (_chargeAction != null)
             {
-                _shootAction.Disable();
-                _shootAction.Dispose();
-                _shootAction = null;
+                _chargeAction.Disable();
+                _chargeAction.Dispose();
+                _chargeAction = null;
+            }
+            if (_motionShootAction != null)
+            {
+                _motionShootAction.Disable();
+                _motionShootAction.Dispose();
+                _motionShootAction = null;
+            }
+            if (_rightHandPositionAction != null)
+            {
+                _rightHandPositionAction.Disable();
+                _rightHandPositionAction.Dispose();
+                _rightHandPositionAction = null;
+            }
+            if (_rightHandVelocityAction != null)
+            {
+                _rightHandVelocityAction.Disable();
+                _rightHandVelocityAction.Dispose();
+                _rightHandVelocityAction = null;
             }
             if (_receiveAction != null)
             {
@@ -217,15 +269,15 @@ namespace SoccerBot
 
         private void HandleCharge(Keyboard kb)
         {
-            if (_shootAction == null) return;
+            if (_chargeAction == null && _motionShootAction == null) return;
 
             // Cancel charge if disabled mid-way (e.g. scenario starts)
-            if (!ShootingEnabled && _charging)
+            if (!ShootingEnabled && IsCharging)
             {
                 CancelCharge();
                 return;
             }
-            if (kb != null && kb.escapeKey.wasPressedThisFrame && _charging)
+            if (kb != null && kb.escapeKey.wasPressedThisFrame && IsCharging)
             {
                 CancelCharge();
                 return;
@@ -233,7 +285,21 @@ namespace SoccerBot
 
             if (!ShootingEnabled) return;
 
-            if (_shootAction.WasPressedThisFrame())
+            if (_motionShootAction != null && _motionShootAction.WasPressedThisFrame())
+            {
+                BeginMotionShot();
+                return;
+            }
+
+            if (_motionCharging)
+            {
+                UpdateMotionShot();
+                if (_motionShootAction != null && _motionShootAction.WasReleasedThisFrame())
+                    ReleaseMotionShot();
+                return;
+            }
+
+            if (_chargeAction != null && _chargeAction.WasPressedThisFrame())
             {
                 _charging = true;
                 _chargeTime = 0f;
@@ -248,12 +314,11 @@ namespace SoccerBot
                 float power = Mathf.Clamp01(_chargeTime / _maxChargeTime);
                 OnChargeChanged?.Invoke(power);
 
-                if (_shootAction.WasReleasedThisFrame())
+                bool chargeReleased = _chargeAction != null && _chargeAction.WasReleasedThisFrame();
+                bool motionTriggerReleased = _motionShootAction != null && _motionShootAction.WasReleasedThisFrame();
+                if (chargeReleased || motionTriggerReleased)
                 {
-                    Vector3 dir = _fpsCamera != null
-                        ? _fpsCamera.transform.forward
-                        : transform.forward;
-                    dir.Normalize();
+                    Vector3 dir = GetAimDirection();
                     _charging = false;
                     OnShoot?.Invoke(power, dir);
                     OnChargeChanged?.Invoke(0f);
@@ -264,9 +329,125 @@ namespace SoccerBot
         private void CancelCharge()
         {
             _charging = false;
+            _motionCharging = false;
             _chargeTime = 0f;
+            _motionBackswing = 0f;
+            _motionForwardSpeed = 0f;
+            _motionPower01 = 0f;
+            _motionBestForwardVelocity = Vector3.zero;
             OnChargeChanged?.Invoke(0f);
             OnChargeCancel?.Invoke();
+        }
+
+        private void BeginMotionShot()
+        {
+            if (!TryReadRightHandPosition(out Vector3 handPos))
+            {
+                _charging = true;
+                _chargeTime = 0f;
+                OnChargeBegin?.Invoke();
+                OnChargeChanged?.Invoke(0f);
+                return;
+            }
+
+            _motionCharging = true;
+            _motionStartHandPos = handPos;
+            _motionLastHandPos = handPos;
+            _motionBackswing = 0f;
+            _motionForwardSpeed = 0f;
+            _motionPower01 = 0f;
+            _motionBestForwardVelocity = Vector3.zero;
+            OnChargeBegin?.Invoke();
+            OnChargeChanged?.Invoke(0f);
+        }
+
+        private void UpdateMotionShot()
+        {
+            if (!TryReadRightHandPosition(out Vector3 handPos)) return;
+
+            Vector3 aim = GetAimDirection();
+            float signedTravel = Vector3.Dot(handPos - _motionStartHandPos, aim);
+            _motionBackswing = Mathf.Max(_motionBackswing, -signedTravel);
+
+            Vector3 velocity = ReadRightHandVelocity(handPos);
+            float forwardSpeed = Mathf.Max(0f, Vector3.Dot(velocity, aim));
+            if (_motionBackswing >= _motionShotMinBackswing && forwardSpeed > _motionForwardSpeed)
+            {
+                _motionForwardSpeed = forwardSpeed;
+                _motionBestForwardVelocity = velocity;
+            }
+
+            _motionLastHandPos = handPos;
+            _motionPower01 = CalculateMotionPower();
+            OnChargeChanged?.Invoke(_motionPower01);
+        }
+
+        private void ReleaseMotionShot()
+        {
+            UpdateMotionShot();
+            float power = CalculateMotionPower();
+            if (_motionBackswing < _motionShotMinBackswing || _motionForwardSpeed < _motionShotMinForwardSpeed)
+            {
+                CancelCharge();
+                return;
+            }
+
+            Vector3 dir = GetMotionShotDirection();
+            _motionCharging = false;
+            _motionPower01 = 0f;
+            OnShoot?.Invoke(power, dir);
+            OnChargeChanged?.Invoke(0f);
+        }
+
+        private float CalculateMotionPower()
+        {
+            float back01 = Mathf.InverseLerp(_motionShotMinBackswing, _motionShotFullBackswing, _motionBackswing);
+            float speed01 = Mathf.InverseLerp(_motionShotMinForwardSpeed, _motionShotFullForwardSpeed, _motionForwardSpeed);
+            return Mathf.Clamp01(back01 * 0.45f + speed01 * 0.55f);
+        }
+
+        private bool TryReadRightHandPosition(out Vector3 handPos)
+        {
+            handPos = Vector3.zero;
+            if (_rightHandPositionAction == null || _rightHandPositionAction.controls.Count == 0)
+                return false;
+
+            handPos = _rightHandPositionAction.ReadValue<Vector3>();
+            return true;
+        }
+
+        private Vector3 ReadRightHandVelocity(Vector3 currentHandPos)
+        {
+            if (_rightHandVelocityAction != null && _rightHandVelocityAction.controls.Count > 0)
+            {
+                Vector3 velocity = _rightHandVelocityAction.ReadValue<Vector3>();
+                if (velocity.sqrMagnitude > 0.0001f)
+                    return velocity;
+            }
+
+            float dt = Mathf.Max(Time.deltaTime, 0.0001f);
+            return (currentHandPos - _motionLastHandPos) / dt;
+        }
+
+        private Vector3 GetMotionShotDirection()
+        {
+            Vector3 aim = GetAimDirection();
+            if (_motionBestForwardVelocity.sqrMagnitude < 0.0001f)
+                return aim;
+
+            Vector3 swingDir = _motionBestForwardVelocity.normalized;
+            Vector3 dir = Vector3.Slerp(aim, swingDir, _motionShotSwingDirectionWeight);
+            dir.Normalize();
+            return dir;
+        }
+
+        private Vector3 GetAimDirection()
+        {
+            Vector3 dir = _fpsCamera != null
+                ? _fpsCamera.transform.forward
+                : transform.forward;
+            dir.Normalize();
+            return dir;
         }
 
         // ── Subtle camera recoil while charging ──────────────
