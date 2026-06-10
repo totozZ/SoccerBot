@@ -14,6 +14,15 @@ namespace SoccerBot
 {
     public class FieldBuilder : MonoBehaviour
     {
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int BumpScaleId = Shader.PropertyToID("_BumpScale");
+        private static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
+        private static readonly int GlossinessId = Shader.PropertyToID("_Glossiness");
+        private static readonly int MetallicId = Shader.PropertyToID("_Metallic");
+        private const string BaseMapName = "_BaseMap";
+        private const string MainTexName = "_MainTex";
+
         [Header("Dimensions (meters)")]
         [SerializeField] public float _halfWidth = 6.0f;
         [SerializeField] public float _halfLength = 9.0f;
@@ -72,8 +81,13 @@ namespace SoccerBot
             grass.transform.localPosition = new Vector3(0f, -thickness * 0.5f, 0f);
             grass.transform.localScale = new Vector3(_halfWidth * 2f, thickness, _halfLength * 2f);
             var r = grass.GetComponent<Renderer>();
-            if (_grassMaterial != null) r.sharedMaterial = _grassMaterial;   // keep texture, survives Play
-            else if (r != null) r.material.color = _grassColor;
+            if (r != null)
+            {
+                r.sharedMaterial = _grassMaterial != null
+                    ? _grassMaterial
+                    : CreateLitMaterial("Generated Grass", _grassColor, 0f, 0.22f);
+                ConfigureGrassMaterial(r.sharedMaterial);
+            }
             // Keep the collider — ground physics
             grass.isStatic = true;
         }
@@ -83,6 +97,7 @@ namespace SoccerBot
         void BuildStripes()
         {
             float stripeLength = (_halfLength * 2f) / _stripeCount;
+            Material stripeMat = CreateTransparentMaterial("Mowed Stripe", _grassStripeColor, 0.18f);
             for (int i = 0; i < _stripeCount; i++)
             {
                 if (i % 2 == 0) continue;   // every other strip
@@ -99,7 +114,7 @@ namespace SoccerBot
                 stripe.transform.localScale = new Vector3(_halfWidth * 2f, stripeLength, 1f);
 
                 var rend = stripe.GetComponent<Renderer>();
-                if (rend != null) rend.material.color = _grassStripeColor;
+                if (rend != null) rend.sharedMaterial = stripeMat;
             }
         }
 
@@ -157,7 +172,7 @@ namespace SoccerBot
             lr.SetPositions(points);
             lr.startWidth = _lineWidth;
             lr.endWidth = _lineWidth;
-            lr.material = new Material(Shader.Find("Sprites/Default"));
+            lr.material = CreateUnlitMaterial("Pitch Line", _lineColor);
             lr.startColor = _lineColor;
             lr.endColor = _lineColor;
             lr.numCornerVertices = 2;
@@ -211,9 +226,7 @@ namespace SoccerBot
             var nr = net.GetComponent<Renderer>();
             if (nr != null)
             {
-                var mat = nr.material;
-                // Try transparent; if URP/Lit isn't available, fall back to opaque grey
-                mat.color = _goalNetColor;
+                nr.sharedMaterial = CreateTransparentMaterial("Goal Net Hint", _goalNetColor, _goalNetColor.a);
             }
         }
 
@@ -225,8 +238,87 @@ namespace SoccerBot
             go.transform.localPosition = localPos;
             go.transform.localScale = localScale;
             var r = go.GetComponent<Renderer>();
-            if (r != null) r.material.color = color;
+            if (r != null) r.sharedMaterial = CreateLitMaterial("Goal Frame", color, 0.15f, 0.38f);
             // Keep collider on posts so the ball can bounce
+        }
+
+        private static void ConfigureGrassMaterial(Material mat)
+        {
+            if (mat == null) return;
+            SetColor(mat, _StaticGrassTint);
+            SetTextureScale(mat, BaseMapName, new Vector2(6f, 6f));
+            SetTextureScale(mat, MainTexName, new Vector2(6f, 6f));
+            SetFloat(mat, BumpScaleId, 0.45f);
+            SetFloat(mat, SmoothnessId, 0.22f);
+            SetFloat(mat, GlossinessId, 0.22f);
+            SetFloat(mat, MetallicId, 0f);
+        }
+
+        private static readonly Color _StaticGrassTint = new(0.18f, 0.55f, 0.22f, 1f);
+
+        private static Material CreateLitMaterial(string name, Color color, float metallic, float smoothness)
+        {
+            Shader shader = null;
+            if (!UsingBuiltInRenderPipeline())
+            {
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            }
+            if (shader == null) shader = Shader.Find("Standard");
+            if (shader == null) shader = Shader.Find("Diffuse");
+            Material mat = new Material(shader) { name = name };
+            SetColor(mat, color);
+            SetFloat(mat, MetallicId, metallic);
+            SetFloat(mat, SmoothnessId, smoothness);
+            SetFloat(mat, GlossinessId, smoothness);
+            return mat;
+        }
+
+        private static Material CreateUnlitMaterial(string name, Color color)
+        {
+            Shader shader = null;
+            if (!UsingBuiltInRenderPipeline())
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Material mat = new Material(shader) { name = name };
+            SetColor(mat, color);
+            return mat;
+        }
+
+        private static Material CreateTransparentMaterial(string name, Color color, float alpha)
+        {
+            Shader shader = Shader.Find("Sprites/Default");
+            Material mat = new Material(shader) { name = name };
+            color.a = alpha;
+            SetColor(mat, color);
+            mat.renderQueue = 3000;
+            return mat;
+        }
+
+        private static void SetColor(Material mat, Color color)
+        {
+            if (mat == null) return;
+            if (mat.HasProperty(BaseColorId)) mat.SetColor(BaseColorId, color);
+            if (mat.HasProperty(ColorId)) mat.SetColor(ColorId, color);
+        }
+
+        private static void SetFloat(Material mat, int propertyId, float value)
+        {
+            if (mat != null && mat.HasProperty(propertyId))
+                mat.SetFloat(propertyId, value);
+        }
+
+        private static void SetTextureScale(Material mat, string propertyName, Vector2 value)
+        {
+            if (mat != null && mat.HasProperty(propertyName))
+                mat.SetTextureScale(propertyName, value);
+        }
+
+        private static bool UsingBuiltInRenderPipeline()
+        {
+            return UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null
+                && QualitySettings.renderPipeline == null;
         }
     }
 }

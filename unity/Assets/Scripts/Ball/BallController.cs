@@ -21,18 +21,26 @@ namespace SoccerBot
         [Header("Visuals")]
         [SerializeField] private bool _showWhileIdle = false;
         [SerializeField] private Vector3 _idlePosition = new Vector3(0f, -10f, 0f);
+        [SerializeField] private GameObject _visualPrefab;
+        [SerializeField] private float _visualScale = 1f;
+        [SerializeField] private bool _hideSourceRendererWhenVisualPrefab = false;
 
         [Header("Prediction Line — where the ball WILL go")]
         [SerializeField] private bool _drawPrediction = true;
 
         private TrailRenderer _cometTrail;
         private TrajectoryRenderer _trajectoryRenderer;
+        private MeshRenderer _sourceRenderer;
+        private Renderer[] _visualRenderers;
         private bool _ballActive;
         private bool _externalControl;
 
         void Awake()
         {
             if (_ballTransform == null) _ballTransform = transform;
+
+            _sourceRenderer = GetComponent<MeshRenderer>();
+            EnsureVisualModel();
 
             _cometTrail = GetComponent<TrailRenderer>();
             _cometTrail.time = _trailTime;
@@ -136,8 +144,62 @@ namespace SoccerBot
 
         private void SetBallVisible(bool visible)
         {
-            var r = GetComponent<Renderer>();
-            if (r != null) r.enabled = visible;
+            if (_sourceRenderer != null)
+                _sourceRenderer.enabled = visible && (_visualPrefab == null || !_hideSourceRendererWhenVisualPrefab);
+
+            if (_visualRenderers == null) return;
+            for (int i = 0; i < _visualRenderers.Length; i++)
+            {
+                if (_visualRenderers[i] != null)
+                    _visualRenderers[i].enabled = visible;
+            }
+        }
+
+        private void EnsureVisualModel()
+        {
+            if (_visualPrefab == null)
+            {
+                RemoveGeneratedVisualModel();
+                return;
+            }
+
+            if (_sourceRenderer != null && !_hideSourceRendererWhenVisualPrefab)
+            {
+                RemoveGeneratedVisualModel();
+                return;
+            }
+
+            if (_ballTransform.Find("SoccerBallVisual") != null)
+            {
+                _visualRenderers = _ballTransform.Find("SoccerBallVisual").GetComponentsInChildren<Renderer>(true);
+                return;
+            }
+
+            GameObject visual = Instantiate(_visualPrefab, _ballTransform);
+            visual.name = "SoccerBallVisual";
+            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localRotation = Quaternion.identity;
+            visual.transform.localScale = Vector3.one * _visualScale;
+
+            foreach (var col in visual.GetComponentsInChildren<Collider>(true))
+                Destroy(col);
+            foreach (var t in visual.GetComponentsInChildren<Transform>(true))
+                t.gameObject.isStatic = false;
+
+            _visualRenderers = visual.GetComponentsInChildren<Renderer>(true);
+        }
+
+        private void RemoveGeneratedVisualModel()
+        {
+            Transform existing = _ballTransform.Find("SoccerBallVisual");
+            if (existing == null) return;
+
+            if (Application.isPlaying)
+                Destroy(existing.gameObject);
+            else
+                DestroyImmediate(existing.gameObject);
+
+            _visualRenderers = null;
         }
 
         // Called by GameManager when isFiring rising edge (AFTER data is set).

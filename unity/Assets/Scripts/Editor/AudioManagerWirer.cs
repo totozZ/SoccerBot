@@ -8,7 +8,7 @@ namespace SoccerBot
     {
         private const string ClipDir = "Assets/Gregor Quendel - Free Crowd Cheering Sounds/";
 
-        // All 7 clip slots on AudioManager mapped to crowd-cheer wavs. No dedicated SFX
+        // All clip slots on AudioManager mapped to crowd-cheer wavs. No dedicated SFX
         // exist in the project, so these are approximate crowd sounds — fine for the demo.
         private static readonly (string field, string file)[] Clips =
         {
@@ -19,6 +19,7 @@ namespace SoccerBot
             ("_sfxGoal",      "Gregor Quendel - Free Crowd Cheering Sounds - 03 - Strong cheering - I.wav"),
             ("_sfxIntercept", "Gregor Quendel - Free Crowd Cheering Sounds - 06 - Soft cheering - II.wav"),
             ("_sfxMiss",      "Gregor Quendel - Free Crowd Cheering Sounds - 05 - Soft cheering - I.wav"),
+            ("_sfxCrowdCheer","Gregor Quendel - Free Crowd Cheering Sounds - 02 - Strong cheering and soft rhythmic cheering.wav"),
         };
 
         [MenuItem("SoccerBot/Wire AudioManager Clips")]
@@ -41,7 +42,7 @@ namespace SoccerBot
                 Undo.DestroyObjectImmediate(mgr);
             }
 
-            // ── Fill all 7 clip slots on the keeper ──
+            // ── Fill all clip slots on the keeper ──
             var so = new SerializedObject(keeper);
             foreach (var (field, file) in Clips)
                 SetClip(so, field, ClipDir + file);

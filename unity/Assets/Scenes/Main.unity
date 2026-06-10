@@ -11878,18 +11878,18 @@ MonoBehaviour:
   _wallHeight: 0.5
   _wallColor: {r: 0.92, g: 0.92, b: 0.95, a: 1}
   _buildPylons: 1
-  _pylonHeight: 6.5
+  _pylonHeight: 8.5
   _pylonInset: 1.2
   _pylonColor: {r: 0.25, g: 0.27, b: 0.3, a: 1}
-  _lampColor: {r: 1, g: 0.96, b: 0.8, a: 1}
+  _lampColor: {r: 1, g: 0.94, b: 0.72, a: 1}
   _buildRoof: 1
   _roofColor: {r: 0.18, g: 0.2, b: 0.24, a: 1}
   _crowdPalette:
-  - {r: 0.2, g: 0.35, b: 0.75, a: 1}
-  - {r: 0.8, g: 0.2, b: 0.22, a: 1}
-  - {r: 0.9, g: 0.9, b: 0.92, a: 1}
-  - {r: 0.95, g: 0.78, b: 0.15, a: 1}
-  - {r: 0.3, g: 0.32, b: 0.36, a: 1}
+  - {r: 0.46, g: 0.67, b: 0.86, a: 1}
+  - {r: 0.92, g: 0.94, b: 0.96, a: 1}
+  - {r: 0.08, g: 0.09, b: 0.1, a: 1}
+  - {r: 0.92, g: 0.68, b: 0.16, a: 1}
+  - {r: 0.26, g: 0.28, b: 0.33, a: 1}
 --- !u!114 &365206153
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11908,15 +11908,17 @@ MonoBehaviour:
   _bobAmplitude: 0.08
   _bobFrequency: 2.5
   _dotSpawnRadius: 0.2
-  _confettiCount: 25
-  _confettiLifetime: 2.5
+  _confettiCount: 90
+  _confettiLifetime: 4
   _confettiSpawnY: 5
-  _confettiSpawnRadius: 4
-  _flashDuration: 0.5
-  _flashIntensityBoost: 0.6
-  _flashCount: 2
-  _crowdCheerClips: []
-  _cheerVolume: 0.8
+  _confettiSpawnRadius: 8
+  _flashDuration: 0.62
+  _flashIntensityBoost: 1.5
+  _flashCount: 3
+  _crowdCheerClips:
+  - {fileID: 8300000, guid: 027a72b922e6f4776a32ba9c18f8c245, type: 3}
+  - {fileID: 8300000, guid: 5fa0ff60099584abb9123a1620892533, type: 3}
+  _cheerVolume: 1
 --- !u!4 &365206152
 Transform:
   m_ObjectHideFlags: 0
@@ -25154,12 +25156,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c00cc8b598ccfa44b53d5b999bd563c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SoccerBot.PolishVolumeBuilder
-  _bloomIntensity: 0.5
-  _bloomThreshold: 1.1
-  _vignetteIntensity: 0.25
-  _contrast: 10
-  _saturation: 15
-  _postExposure: 0
+  _bloomIntensity: 0.9
+  _bloomThreshold: 0.95
+  _vignetteIntensity: 0.26
+  _contrast: 12
+  _saturation: 12
+  _postExposure: 0.15
 --- !u!114 &833829294
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -25172,10 +25174,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ffc648d62609384bb177f50f7709955, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SoccerBot.LightingConfigurator
-  _lightColor: {r: 1, g: 0.75, b: 0.5, a: 1}
+  _lightColor: {r: 1, g: 0.67, b: 0.38, a: 1}
   _lightIntensity: 1.2
-  _lightYAngle: -20
-  _shadowStrength: 0.65
+  _lightYAngle: -8
+  _shadowStrength: 0.45
   _ambientColor: {r: 0.1, g: 0.08, b: 0.06, a: 1}
   _shadowDistance: 30
   _shadowResolution: 3
@@ -32805,6 +32807,9 @@ MonoBehaviour:
   _trailColor: {r: 1, g: 0.85, b: 0.1, a: 1}
   _showWhileIdle: 0
   _idlePosition: {x: 0, y: -10, z: 0}
+  _visualPrefab: {fileID: 0}
+  _visualScale: 1
+  _hideSourceRendererWhenVisualPrefab: 0
   _drawPrediction: 1
 --- !u!96 &1122507567
 TrailRenderer:
@@ -34138,6 +34143,7 @@ MonoBehaviour:
   _sfxGoal: {fileID: 8300000, guid: 1ef6d499256c74e98a4fa1596ef8652c, type: 3}
   _sfxIntercept: {fileID: 8300000, guid: 72b0f384eccad41da9875a8c89e9c70e, type: 3}
   _sfxMiss: {fileID: 8300000, guid: a324ad6715a304a00b95f38797efa797, type: 3}
+  _sfxCrowdCheer: {fileID: 8300000, guid: 027a72b922e6f4776a32ba9c18f8c245, type: 3}
   _masterVolume: 1
   _bgmVolume: 0.6
   _sfxVolume: 1

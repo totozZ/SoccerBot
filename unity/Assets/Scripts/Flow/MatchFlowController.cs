@@ -95,7 +95,7 @@ namespace SoccerBot
         [Header("Demo Scene Polish")]
         [SerializeField] private bool _enableDemoScenePolish = true;
         [SerializeField] private bool _replaceRobotWithTeammateVisual = true;
-        [Tooltip("Global down-scale applied to every NPC and the ball (1 = original size).")]
+        [Tooltip("Global down-scale applied to scene-authored NPCs (1 = original size).")]
         [SerializeField] private float _npcScaleMultiplier = 0.8f;
         [Tooltip("Vertical nudge for the FPS eye height (metres, negative = lower view).")]
         [SerializeField] private float _eyeHeightAdjust = -0.25f;
@@ -433,6 +433,7 @@ namespace SoccerBot
         {
             if (!_enableDemoScenePolish) return;
 
+            EnsureAtmosphereControllers();
             EnsureRobotVisualSwap();
             EnsureGoalkeeper();
             EnsureBackgroundNpcs();
@@ -440,6 +441,16 @@ namespace SoccerBot
             EnsureFallbackHud();
             ApplyNpcDownscale();
             ApplyEyeHeight();
+        }
+
+        private void EnsureAtmosphereControllers()
+        {
+            if (FindFirstObjectByType<WeatherController>(FindObjectsInactive.Include) == null)
+                gameObject.AddComponent<WeatherController>();
+
+            var lighting = FindFirstObjectByType<LightingConfigurator>(FindObjectsInactive.Include);
+            if (lighting != null)
+                lighting.Apply();
         }
 
         // Lowers (or raises) the FPS eye height by a fixed nudge, once.
@@ -455,8 +466,10 @@ namespace SoccerBot
             _fpsAnchor.localPosition = p;
         }
 
-        // Down-scales the scene-authored NPCs and the ball (the runtime-spawned
-        // robot / goalkeeper / support NPCs are already scaled at creation time).
+        // Down-scales the scene-authored NPCs (the runtime-spawned robot /
+        // goalkeeper / support NPCs are already scaled at creation time).
+        // The ball keeps its authored scale because its visible mesh already
+        // matches the collision/trajectory offsets.
         // Guarded so it only ever runs once, even if polish is re-invoked.
         private bool _npcDownscaleApplied;
         private void ApplyNpcDownscale()
@@ -466,7 +479,6 @@ namespace SoccerBot
 
             ScaleTransform(_teammateTransform);
             ScaleTransform(_opponentTransform);
-            if (_ball != null) ScaleTransform(_ball.transform);
         }
 
         private void ScaleTransform(Transform t)
@@ -1402,6 +1414,7 @@ namespace SoccerBot
 
             float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
             float effectivePower = Mathf.Clamp01(power01 + receiveBias + UnityEngine.Random.Range(-_randomJitter, _randomJitter));
+            _scorePanel?.SetFirstTouchContext(_receiveQuality, receiveBias);
             _receptionPrompt?.ShowShotBias(receiveBias);
 
             if (effectivePower >= _scoreThreshold)

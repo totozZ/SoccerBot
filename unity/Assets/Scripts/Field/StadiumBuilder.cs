@@ -43,7 +43,8 @@ namespace SoccerBot
         [SerializeField] private float _lampHeadLift  = 2.0f;
         [SerializeField] private float _pylonInset    = 1.2f;  // how far outside the top tier
         [SerializeField] private Color _pylonColor    = new Color(0.25f, 0.27f, 0.3f);
-        [SerializeField] private Color _lampColor     = new Color(1f, 0.96f, 0.8f);
+        [SerializeField] private Color _lampColor     = new Color(1f, 0.94f, 0.72f);
+        [SerializeField, Range(0f, 1f)] private float _beamAlpha = 0.16f;
 
         [Header("Hexagram Dome Lights (six-point star, cold white)")]
         [SerializeField] private bool  _buildHexagramDome = true;
@@ -69,11 +70,11 @@ namespace SoccerBot
         [Tooltip("Seat blocks are randomly tinted from these to fake a packed crowd.")]
         [SerializeField] private Color[] _crowdPalette =
         {
-            new Color(0.20f, 0.35f, 0.75f),  // blue fans
-            new Color(0.80f, 0.20f, 0.22f),  // red fans
-            new Color(0.90f, 0.90f, 0.92f),  // white shirts
-            new Color(0.95f, 0.78f, 0.15f),  // gold/yellow
-            new Color(0.30f, 0.32f, 0.36f),  // empty/dark seats
+            new Color(0.46f, 0.67f, 0.86f),  // Argentina sky blue
+            new Color(0.92f, 0.94f, 0.96f),  // Germany / Argentina white
+            new Color(0.08f, 0.09f, 0.10f),  // Germany black
+            new Color(0.92f, 0.68f, 0.16f),  // warm stadium highlights
+            new Color(0.26f, 0.28f, 0.33f),  // dark seats / shadow
         };
 
         void Awake() => Build();
@@ -247,14 +248,47 @@ namespace SoccerBot
                 var floodLight = lamp.AddComponent<Light>();
                 floodLight.type = LightType.Spot;
                 floodLight.color = _lampColor;
-                floodLight.intensity = 3.2f;
+                floodLight.intensity = 4.2f;
                 floodLight.range = 34f;
                 floodLight.spotAngle = 95f;
                 floodLight.innerSpotAngle = 45f;
                 floodLight.shadows = LightShadows.None;
                 floodLight.transform.localPosition = new Vector3(0f, 0f, 0.12f);
                 floodLight.transform.localRotation = Quaternion.identity;
+
+                BuildPylonBeam(lamp.transform, _lampColor);
             }
+        }
+
+        void BuildPylonBeam(Transform parent, Color sourceColor)
+        {
+            if (_beamAlpha <= 0f) return;
+
+            BuildBeamQuad(parent, "BroadcastBeam_A", sourceColor, Quaternion.Euler(90f, 0f, 0f));
+            BuildBeamQuad(parent, "BroadcastBeam_B", sourceColor, Quaternion.Euler(90f, 0f, 90f));
+        }
+
+        void BuildBeamQuad(Transform parent, string name, Color sourceColor, Quaternion localRotation)
+        {
+            var beam = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            beam.name = name;
+            beam.transform.SetParent(parent, false);
+            beam.transform.localPosition = new Vector3(0f, 0f, 3.8f);
+            beam.transform.localRotation = localRotation;
+            beam.transform.localScale = new Vector3(1.9f, 7.8f, 1f);
+            Destroy(beam.GetComponent<Collider>());
+
+            var renderer = beam.GetComponent<Renderer>();
+            if (renderer == null) return;
+
+            Color color = sourceColor;
+            color.a = _beamAlpha;
+            var mat = new Material(Shader.Find("Sprites/Default"));
+            mat.color = color;
+            mat.renderQueue = 3000;
+            renderer.material = mat;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
         }
 
         // ── Hexagram dome: a six-point star of dotted LED clusters on the ceiling ──

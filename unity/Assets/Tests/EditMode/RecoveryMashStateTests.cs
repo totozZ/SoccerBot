@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using NUnit.Framework;
 
 namespace SoccerBot.Tests
@@ -57,3 +58,4 @@ namespace SoccerBot.Tests
         }
     }
 }
+#endif

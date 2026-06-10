@@ -83,20 +83,30 @@ namespace SoccerBot
 
             System.IO.Directory.CreateDirectory("Assets/Materials");
             var mat = AssetDatabase.LoadAssetAtPath<Material>(GrassMatPath);
+            var shader = GetCompatibleLitShader();
+            if (shader == null) { Debug.LogError("[ArtUpgrade] No compatible lit shader found"); return; }
             if (mat == null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader == null) { Debug.LogError("[ArtUpgrade] URP/Lit shader not found"); return; }
                 mat = new Material(shader) { name = "GrassMat_Upgraded" };
                 AssetDatabase.CreateAsset(mat, GrassMatPath);
             }
-            mat.SetTexture("_BaseMap", albedo);
+            else if (mat.shader != shader)
+            {
+                mat.shader = shader;
+            }
+            SetTextureIfPresent(mat, "_BaseMap", albedo);
+            SetTextureIfPresent(mat, "_MainTex", albedo);
             if (normal != null)
             {
-                mat.SetTexture("_BumpMap", normal);
+                SetTextureIfPresent(mat, "_BumpMap", normal);
                 mat.EnableKeyword("_NORMALMAP");
             }
-            mat.SetTextureScale("_BaseMap", new Vector2(6f, 6f));
+            SetTextureScaleIfPresent(mat, "_BaseMap", new Vector2(6f, 6f));
+            SetTextureScaleIfPresent(mat, "_MainTex", new Vector2(6f, 6f));
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.22f);
+            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.22f);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+            if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", 0.45f);
             EditorUtility.SetDirty(mat);
 
             // Wire into FieldBuilder._grassMaterial so the runtime rebuild keeps the texture
@@ -140,6 +150,32 @@ namespace SoccerBot
             foreach (var g in Resources.FindObjectsOfTypeAll<GameObject>())
                 if (g.name == name && g.scene.isLoaded) return g;
             return null;
+        }
+
+        private static Shader GetCompatibleLitShader()
+        {
+            if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null
+                && QualitySettings.renderPipeline == null)
+            {
+                return Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            }
+
+            return Shader.Find("Universal Render Pipeline/Lit")
+                ?? Shader.Find("Universal Render Pipeline/Simple Lit")
+                ?? Shader.Find("Standard")
+                ?? Shader.Find("Diffuse");
+        }
+
+        private static void SetTextureIfPresent(Material mat, string propertyName, Texture texture)
+        {
+            if (mat != null && mat.HasProperty(propertyName))
+                mat.SetTexture(propertyName, texture);
+        }
+
+        private static void SetTextureScaleIfPresent(Material mat, string propertyName, Vector2 scale)
+        {
+            if (mat != null && mat.HasProperty(propertyName))
+                mat.SetTextureScale(propertyName, scale);
         }
 
         private static void SetActive(string name, bool active)

@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using NUnit.Framework;
 using UnityEngine;
 
@@ -61,3 +62,4 @@ namespace SoccerBot.Tests
         }
     }
 }
+#endif

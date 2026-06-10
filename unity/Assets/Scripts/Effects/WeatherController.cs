@@ -1,17 +1,17 @@
-// WeatherController.cs — Simple weather toggle for demo atmosphere.
-// Sunny: default look. Rain: particles + fog + darker grass.
+// WeatherController.cs - Simple weather toggle for demo atmosphere.
+// DuskHaze is the default show look; Rain remains available as a mood variant.
 // Attach to any persistent GO (e.g., GameManager).
 
 using UnityEngine;
 
 namespace SoccerBot
 {
-    public enum WeatherMode { Sunny, Rain }
+    public enum WeatherMode { Sunny, DuskHaze, Rain }
 
     public class WeatherController : MonoBehaviour
     {
         [Header("Mode")]
-        [SerializeField] private WeatherMode _startMode = WeatherMode.Sunny;
+        [SerializeField] private WeatherMode _startMode = WeatherMode.DuskHaze;
 
         [Header("Rain Particles")]
         [SerializeField] private int   _rainParticleCount = 300;
@@ -23,11 +23,14 @@ namespace SoccerBot
         [SerializeField] private Color _rainColor          = new Color(0.7f, 0.78f, 0.9f, 0.5f);
 
         [Header("Fog")]
+        [SerializeField] private float _duskFogDensity     = 0.005f;
+        [SerializeField] private Color _duskFogColor       = new Color(0.20f, 0.16f, 0.125f);
         [SerializeField] private float _rainFogDensity     = 0.015f;
         [SerializeField] private Color _rainFogColor       = new Color(0.53f, 0.6f, 0.67f);
 
         [Header("Grass Darkening")]
         [SerializeField] private Color _sunnyGrassColor    = new Color(0.18f, 0.55f, 0.22f);
+        [SerializeField] private Color _duskGrassColor     = new Color(0.16f, 0.46f, 0.19f);
         [SerializeField] private Color _rainGrassColor     = new Color(0.10f, 0.32f, 0.13f);
 
         private ParticleSystem _rainPs;
@@ -49,6 +52,15 @@ namespace SoccerBot
                 RenderSettings.fog = false;
                 SetGrassColor(_sunnyGrassColor);
             }
+            else if (mode == WeatherMode.DuskHaze)
+            {
+                if (_rainPs != null) _rainPs.Stop();
+                RenderSettings.fog = true;
+                RenderSettings.fogMode = FogMode.ExponentialSquared;
+                RenderSettings.fogDensity = _duskFogDensity;
+                RenderSettings.fogColor = _duskFogColor;
+                SetGrassColor(_duskGrassColor);
+            }
             else
             {
                 if (_rainPs != null) _rainPs.Play();
@@ -62,8 +74,14 @@ namespace SoccerBot
 
         public void ToggleWeather()
         {
-            var cur = RenderSettings.fog ? WeatherMode.Rain : WeatherMode.Sunny;
-            SetWeather(cur == WeatherMode.Sunny ? WeatherMode.Rain : WeatherMode.Sunny);
+            if (!RenderSettings.fog)
+            {
+                SetWeather(WeatherMode.DuskHaze);
+                return;
+            }
+
+            bool isRainColor = Approximately(RenderSettings.fogColor, _rainFogColor);
+            SetWeather(isRainColor ? WeatherMode.Sunny : WeatherMode.Rain);
         }
 
         private ParticleSystem BuildRainSystem()
@@ -98,6 +116,13 @@ namespace SoccerBot
             r.lengthScale = 0.8f;
             r.velocityScale = 0.25f;
             return ps;
+        }
+
+        private static bool Approximately(Color a, Color b)
+        {
+            return Mathf.Abs(a.r - b.r) < 0.02f
+                && Mathf.Abs(a.g - b.g) < 0.02f
+                && Mathf.Abs(a.b - b.b) < 0.02f;
         }
 
         private void SetGrassColor(Color target)

@@ -72,6 +72,8 @@ namespace SoccerBot
             "CLINICAL FINISH!"
         };
 
+        private string _firstTouchSummary = string.Empty;
+
         void Start()
         {
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
@@ -91,6 +93,16 @@ namespace SoccerBot
             StartCoroutine(ShowRoutine(s));
         }
 
+        public void SetFirstTouchContext(float quality01, float receiveBias)
+        {
+            if (quality01 >= 0.78f)
+                _firstTouchSummary = $"First Touch: excellent  +{receiveBias * 100f:0}% shot chance";
+            else if (quality01 >= 0.45f)
+                _firstTouchSummary = "First Touch: stable  neutral shot chance";
+            else
+                _firstTouchSummary = $"First Touch: pressured  {receiveBias * 100f:0}% shot chance";
+        }
+
         public void HideImmediate()
         {
             StopAllCoroutines();
@@ -103,7 +115,7 @@ namespace SoccerBot
             SetText(_scenarioNameText, s.scenarioName);
             SetText(_scoreText, GetRandomScoreText(s.finalScore));
             SetText(_outcomeText, OutcomeLabel(s.outcome));
-            SetText(_flavorText, s.flavorText);
+            SetText(_flavorText, ComposeFlavor(s.flavorText));
 
             var c = OutcomeColor(s.outcome);
             ApplyColor(_scenarioNameText, c);
@@ -160,6 +172,15 @@ namespace SoccerBot
 
         private static void SetText(TMP_Text t, string v) { if (t != null) t.text = v; }
         private static void ApplyColor(TMP_Text t, Color c) { if (t != null) t.color = c; }
+
+        private string ComposeFlavor(string scenarioFlavor)
+        {
+            if (string.IsNullOrWhiteSpace(_firstTouchSummary))
+                return scenarioFlavor;
+            if (string.IsNullOrWhiteSpace(scenarioFlavor))
+                return _firstTouchSummary;
+            return $"{scenarioFlavor}\n{_firstTouchSummary}";
+        }
 
         private string GetRandomScoreText(int finalScore)
         {

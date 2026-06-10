@@ -31,24 +31,28 @@ namespace SoccerBot
         [Tooltip("Also seat people on the dark 'empty' palette colour (off = sparser, realistic).")]
         [SerializeField] private bool  _fillDarkSeats = true;
 
+        [Header("VR Rendering")]
+        [Tooltip("Build a small set of real MeshRenderers for the crowd. More reliable in VR/Quest than per-frame procedural instanced draws.")]
+        [SerializeField] private bool _useMeshRendererCrowd = true;
+
         [Header("Idle Motion")]
         [SerializeField] private float _idleAmplitude = 0.025f;
         [SerializeField] private float _idleFrequency = 2.2f;
 
         [Header("Goal Cheer (stand up + jump)")]
-        [SerializeField] private float _cheerJumpHeight = 0.18f;
-        [SerializeField] private float _cheerDuration   = 1.2f;
+        [SerializeField] private float _cheerJumpHeight = 0.26f;
+        [SerializeField] private float _cheerDuration   = 1.8f;
 
         [Header("Confetti (on goal)")]
-        [SerializeField] private int   _confettiCount      = 25;
-        [SerializeField] private float _confettiLifetime    = 2.5f;
+        [SerializeField] private int   _confettiCount      = 90;
+        [SerializeField] private float _confettiLifetime    = 4.0f;
         [SerializeField] private float _confettiSpawnY      = 5f;
-        [SerializeField] private float _confettiSpawnRadius = 4f;
+        [SerializeField] private float _confettiSpawnRadius = 8f;
 
         [Header("Spot Light Flash (on goal)")]
-        [SerializeField] private float _flashDuration       = 0.5f;
-        [SerializeField] private float _flashIntensityBoost = 0.6f;
-        [SerializeField] private int   _flashCount          = 2;
+        [SerializeField] private float _flashDuration       = 0.62f;
+        [SerializeField] private float _flashIntensityBoost = 1.5f;
+        [SerializeField] private int   _flashCount          = 3;
 
         [Header("Audio")]
         [SerializeField] private AudioClip[] _crowdCheerClips;
@@ -77,6 +81,8 @@ namespace SoccerBot
         private Mesh                  _figureMesh;
         private Shader                _figureShader;      // reused from the seats (build-safe)
         private List<CrowdBucket>     _buckets   = new List<CrowdBucket>();
+        private Transform             _meshCrowdRoot;
+        private bool                  _usingMeshRendererCrowd;
         private float                 _cheerLevel;        // 0..1 envelope, drives the goal jump
         private Coroutine             _cheerRoutine;
         private bool                  _crowdBuilt;
@@ -85,7 +91,9 @@ namespace SoccerBot
         private Light[]           _spotLights;
         private float[]           _spotBaseIntensities;
         private AudioSource       _sfxSource;
+        private AudioManager      _audioManager;
         private Coroutine         _flashRoutine;
+        private Coroutine         _goalBurstRoutine;
 
         void Awake()
         {
@@ -116,6 +124,8 @@ namespace SoccerBot
             var sp = FindFirstObjectByType<ScenarioPlayer>();
             if (sp != null)
                 sp.OnScenarioComplete += OnScenarioComplete;
+
+            _audioManager = FindFirstObjectByType<AudioManager>();
         }
 
         void OnDestroy()
@@ -128,6 +138,12 @@ namespace SoccerBot
         void Update()
         {
             if (!_crowdBuilt || _figureMesh == null) return;
+
+            if (_usingMeshRendererCrowd)
+            {
+                AnimateMeshRendererCrowd();
+                return;
+            }
 
             float t = Time.time;
             for (int b = 0; b < _buckets.Count; b++)
@@ -175,11 +191,33 @@ namespace SoccerBot
             if (s == null) return;
             if (s.outcome == ScenarioOutcome.Score)
             {
-                TriggerConfetti();
-                FlashSpotLights();
-                PlayCrowdCheer();
-                TriggerCrowdCheerJump();
+                if (_goalBurstRoutine != null) StopCoroutine(_goalBurstRoutine);
+                _goalBurstRoutine = StartCoroutine(GoalBurstRoutine());
             }
+        }
+
+        private IEnumerator GoalBurstRoutine()
+        {
+            PlayGoalAudio();
+            yield return new WaitForSeconds(0.25f);
+            TriggerConfetti();
+            FlashSpotLights();
+            TriggerCrowdCheerJump();
+            _goalBurstRoutine = null;
+        }
+
+        private void PlayGoalAudio()
+        {
+            if (_audioManager == null)
+                _audioManager = FindFirstObjectByType<AudioManager>();
+
+            if (_audioManager != null)
+            {
+                _audioManager.PlayGoal();
+                _audioManager.PlayCrowdCheer();
+            }
+
+            PlayCrowdCheer();
         }
 
         // ── Crowd construction ──────────────────────────────────────────────
@@ -190,6 +228,8 @@ namespace SoccerBot
             var bowl = transform.Find("SeatingBowl");
             if (bowl == null) return;
             BuildCrowd(bowl);
+            if (_useMeshRendererCrowd)
+                BuildMeshRendererCrowd();
             _crowdBuilt = true;
         }
 
@@ -279,6 +319,78 @@ namespace SoccerBot
             Debug.Log($"[CrowdAnimator] Seated {total} spectators across {_buckets.Count} colour batches.");
         }
 
+        private void BuildMeshRendererCrowd()
+        {
+            DestroyExistingMeshCrowd();
+            if (_buckets.Count == 0 || _figureMesh == null) return;
+
+            var root = new GameObject("CrowdMeshRenderers");
+            root.transform.SetParent(transform, false);
+            _meshCrowdRoot = root.transform;
+
+            Matrix4x4 toLocal = transform.worldToLocalMatrix;
+            int total = 0;
+            for (int b = 0; b < _buckets.Count; b++)
+            {
+                var bucket = _buckets[b];
+                if (bucket.count <= 0) continue;
+
+                var combines = new CombineInstance[bucket.count];
+                for (int i = 0; i < bucket.count; i++)
+                {
+                    combines[i] = new CombineInstance
+                    {
+                        mesh = _figureMesh,
+                        transform = toLocal * Matrix4x4.TRS(bucket.basePos[i], bucket.rot[i], bucket.scale[i]),
+                    };
+                }
+
+                var mesh = new Mesh
+                {
+                    name = $"CrowdBatch_{b}",
+                    indexFormat = IndexFormat.UInt32,
+                };
+                mesh.CombineMeshes(combines, true, true, false);
+                mesh.RecalculateBounds();
+
+                var go = new GameObject($"CrowdBatch_{b}");
+                go.transform.SetParent(root.transform, false);
+                var mf = go.AddComponent<MeshFilter>();
+                mf.sharedMesh = mesh;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = bucket.material;
+                mr.shadowCastingMode = ShadowCastingMode.Off;
+                mr.receiveShadows = true;
+                total += bucket.count;
+            }
+
+            _usingMeshRendererCrowd = total > 0;
+            if (_usingMeshRendererCrowd)
+                Debug.Log($"[CrowdAnimator] VR-safe MeshRenderer crowd enabled ({total} spectators, {_buckets.Count} meshes).");
+        }
+
+        private void DestroyExistingMeshCrowd()
+        {
+            var existing = transform.Find("CrowdMeshRenderers");
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            _meshCrowdRoot = null;
+            _usingMeshRendererCrowd = false;
+        }
+
+        private void AnimateMeshRendererCrowd()
+        {
+            if (_meshCrowdRoot == null) return;
+
+            float bob = Mathf.Sin(Time.time * _idleFrequency) * _idleAmplitude * 0.25f;
+            float cheer = _cheerLevel * _cheerJumpHeight * 0.35f;
+            _meshCrowdRoot.localPosition = new Vector3(0f, bob + cheer, 0f);
+        }
+
         // One head + torso primitive blob, merged into a single mesh (~a few hundred verts).
         private Mesh BuildSeatedFigureMesh()
         {
@@ -316,14 +428,29 @@ namespace SoccerBot
         private Material BuildInstancedMaterial(Color color)
         {
             var shader = _figureShader != null ? _figureShader
-                       : Shader.Find("Universal Render Pipeline/Lit");
+                       : GetCompatibleLitShader();
             if (shader == null) shader = Shader.Find("Standard");   // last-ditch fallback
+            if (shader == null) shader = Shader.Find("Diffuse");
             var mat = new Material(shader)
             {
                 color = color,
                 enableInstancing = true,
             };
             return mat;
+        }
+
+        private static Shader GetCompatibleLitShader()
+        {
+            if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null
+                && QualitySettings.renderPipeline == null)
+            {
+                return Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            }
+
+            return Shader.Find("Universal Render Pipeline/Lit")
+                ?? Shader.Find("Universal Render Pipeline/Simple Lit")
+                ?? Shader.Find("Standard")
+                ?? Shader.Find("Diffuse");
         }
 
         private static bool ColorClose(Color a, Color b)
