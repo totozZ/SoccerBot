@@ -49,6 +49,7 @@ namespace SoccerBot
 
         [Header("Aim Feedback (optional)")]
         [SerializeField] private float _chargeRecoilOffset = 0.08f;
+        [Tooltip("Creates QuestControllerLegRig so Quest controller poses drive real tracked foot bodies.")]
         [SerializeField] private bool _showFirstPersonLegs = true;
 
         public event Action<float> OnChargeChanged;          // 0..1 each frame while charging
@@ -199,10 +200,15 @@ namespace SoccerBot
         private void EnsureFirstPersonLegs()
         {
             if (!_showFirstPersonLegs) return;
-            if (GetComponent<FirstPersonLegAvatar>() != null) return;
 
-            var legs = gameObject.AddComponent<FirstPersonLegAvatar>();
-            legs.Configure(this, _fpsCamera);
+            var legacyAvatar = GetComponent<FirstPersonLegAvatar>();
+            if (legacyAvatar != null)
+                legacyAvatar.enabled = false;
+
+            var rig = GetComponent<QuestControllerLegRig>();
+            if (rig == null)
+                rig = gameObject.AddComponent<QuestControllerLegRig>();
+            rig.EnsureRig();
         }
 
         void Update()

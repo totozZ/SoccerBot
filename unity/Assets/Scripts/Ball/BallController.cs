@@ -32,8 +32,11 @@ namespace SoccerBot
         private TrajectoryRenderer _trajectoryRenderer;
         private MeshRenderer _sourceRenderer;
         private Renderer[] _visualRenderers;
+        private Rigidbody _physicsBody;
+        private SphereCollider _physicsCollider;
         private bool _ballActive;
         private bool _externalControl;
+        private bool _physicsSimulation;
 
         void Awake()
         {
@@ -41,6 +44,7 @@ namespace SoccerBot
 
             _sourceRenderer = GetComponent<MeshRenderer>();
             EnsureVisualModel();
+            ResolvePhysicsComponents();
 
             _cometTrail = GetComponent<TrailRenderer>();
             _cometTrail.time = _trailTime;
@@ -73,7 +77,7 @@ namespace SoccerBot
 
         void Update()
         {
-            if (_externalControl) return;
+            if (_externalControl || _physicsSimulation) return;
             if (GameManager.Instance == null) return;
 
             var ballData = GameManager.Instance.Ball;
@@ -94,6 +98,7 @@ namespace SoccerBot
 
         public void HideBall()
         {
+            SetPhysicalSimulation(false);
             _ballActive = false;
             SetBallVisible(false);
             _cometTrail.emitting = false;
@@ -107,6 +112,7 @@ namespace SoccerBot
 
         public void AttachTo(Transform parent, Vector3 localOffset)
         {
+            SetPhysicalSimulation(false);
             transform.SetParent(parent, true);
             transform.localPosition = localOffset;
             transform.localRotation = Quaternion.identity;
@@ -126,6 +132,7 @@ namespace SoccerBot
 
         public void BeginExternalControl()
         {
+            SetPhysicalSimulation(false);
             _externalControl = true;
             _ballActive = false;
             SetBallVisible(true);
@@ -136,6 +143,7 @@ namespace SoccerBot
 
         public void EndExternalControl()
         {
+            SetPhysicalSimulation(false);
             _externalControl = false;
             _cometTrail.emitting = false;
             HideBall();
@@ -153,6 +161,80 @@ namespace SoccerBot
                 if (_visualRenderers[i] != null)
                     _visualRenderers[i].enabled = visible;
             }
+        }
+
+        public Rigidbody EnsurePhysicsComponents()
+        {
+            if (_physicsBody == null)
+                _physicsBody = GetComponent<Rigidbody>();
+            if (_physicsBody == null)
+                _physicsBody = gameObject.AddComponent<Rigidbody>();
+
+            _physicsBody.useGravity = true;
+            _physicsBody.interpolation = RigidbodyInterpolation.Interpolate;
+            _physicsBody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+
+            if (_physicsCollider == null)
+                _physicsCollider = GetComponent<SphereCollider>();
+            if (_physicsCollider == null)
+                _physicsCollider = gameObject.AddComponent<SphereCollider>();
+
+            _physicsCollider.isTrigger = false;
+            if (_physicsCollider.radius <= 0.0001f)
+                _physicsCollider.radius = EstimateLocalBallRadius();
+
+            return _physicsBody;
+        }
+
+        public void SetPhysicalSimulation(bool enabled, bool clearVelocity = true)
+        {
+            ResolvePhysicsComponents();
+            if (_physicsBody == null)
+                return;
+
+            _physicsSimulation = enabled;
+            _physicsBody.isKinematic = !enabled;
+            _physicsBody.useGravity = enabled;
+            _physicsBody.detectCollisions = true;
+
+            if (clearVelocity)
+            {
+                _physicsBody.linearVelocity = Vector3.zero;
+                _physicsBody.angularVelocity = Vector3.zero;
+            }
+
+            if (enabled)
+            {
+                transform.SetParent(null, true);
+                SetBallVisible(true);
+                _ballActive = true;
+                if (_trajectoryRenderer != null) _trajectoryRenderer.Clear();
+                if (_cometTrail != null) _cometTrail.emitting = true;
+            }
+        }
+
+        private void ResolvePhysicsComponents()
+        {
+            if (_physicsBody == null)
+                _physicsBody = GetComponent<Rigidbody>();
+            if (_physicsCollider == null)
+                _physicsCollider = GetComponent<SphereCollider>();
+        }
+
+        private float EstimateLocalBallRadius()
+        {
+            Renderer renderer = _sourceRenderer != null ? _sourceRenderer : GetComponentInChildren<Renderer>(true);
+            if (renderer == null)
+                return 0.12f;
+
+            Vector3 extents = renderer.bounds.extents;
+            float worldRadius = Mathf.Max(extents.x, Mathf.Max(extents.y, extents.z));
+            Vector3 scale = transform.lossyScale;
+            float maxScale = Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)));
+            if (maxScale <= 0.0001f)
+                return 0.12f;
+
+            return Mathf.Clamp(worldRadius / maxScale, 0.06f, 0.5f);
         }
 
         private void EnsureVisualModel()
@@ -205,6 +287,7 @@ namespace SoccerBot
         // Called by GameManager when isFiring rising edge (AFTER data is set).
         private void OnShotFired()
         {
+            SetPhysicalSimulation(false);
             if (_externalControl) return;
             SetBallVisible(true);
             _ballActive = true;

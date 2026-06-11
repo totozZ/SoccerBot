@@ -271,3 +271,48 @@ A: 任何高速脚部碰撞都可触发，右扳机只是作为射门意图 gati
 A: 完全物理化
 
 实现功能和简易实现说明需要记录在此文档，以便于排错和后续开发。
+
+## Implementation Notes
+
+### Runtime Components
+
+- `unity/Assets/Scripts/Player/TrackedLegController.cs`
+  - 直接读取 `<XRController>{LeftHand|RightHand}/devicePosition`、`deviceRotation`、`deviceVelocity`、`deviceAngularVelocity`。
+  - `Update` 缓存最新 tracking pose，`FixedUpdate` 使用 `Rigidbody.MovePosition` / `MoveRotation` 同步 kinematic 脚部刚体。
+  - 默认偏移为 `(0, 0.3, 0.1)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
+  - 自动创建简化可视模型：脚部 box、小腿 capsule、左右脚颜色区分。
+  - 自动配置脚部 `Rigidbody`、`BoxCollider` 和小腿 `CapsuleCollider`，接触球时发送 `FootContactData`。
+
+- `unity/Assets/Scripts/Player/QuestControllerLegRig.cs`
+  - 运行时创建 `LeftTrackedLeg` / `RightTrackedLeg`。
+  - 优先把腿放到 `XROrigin.CameraFloorOffsetObject` tracking space 下；找不到 XR Origin 时退回当前 Player。
+  - 自动给当前 `BallController` 挂载 `PhysicalBallInteractor`，让脚触球事件进入球/比赛流程。
+
+- `unity/Assets/Scripts/Ball/PhysicalBallInteractor.cs`
+  - 确保球有 `Rigidbody` 和 `SphereCollider`。
+  - 优先把脚触球事件转交给 `MatchFlowController.HandleFootBallContact`。
+  - 如果当前不在比赛流程可消费的阶段，则按脚速/脚面方向给球施加真实物理 impulse。
+
+### Existing Code Changes
+
+- `FPSPlayerController`
+  - `_showFirstPersonLegs` 现在创建 `QuestControllerLegRig`。
+  - 不再自动创建旧的 `FirstPersonLegAvatar`；如果旧组件已经挂在 Player 上，会在运行时禁用。
+
+- `MatchFlowController`
+  - 新增 `HandleFootBallContact(FootContactData data)`。
+  - `Pass` 阶段：脚触球会根据传球进度、脚速、脚面方向计算接球质量。
+  - `Possession` 阶段：达到最小脚部力量后，用脚速 `power01` 和挥动方向触发现有射门路由。
+  - `Recovery` 阶段：脚触球暂时等同一次 recovery press。
+
+- `BallController`
+  - 新增物理控制开关。
+  - 脚本挂载/插值控制球时保持 `Rigidbody.isKinematic = true`。
+  - 物理脚触球时切到非 kinematic，并启用连续碰撞检测。
+
+### Debug Checklist
+
+- Play Mode 中应出现 `LeftTrackedLeg` 和 `RightTrackedLeg`。
+- Quest 真机中脚/鞋位置应跟随左右手柄真实位置，转动手柄时脚模型同步旋转。
+- 脚碰到球时 Console 会打印 `[TrackedLeg]`；比赛流程消费触球时会打印 `[MatchFlow] Foot receive` 或 `[MatchFlow] Foot shot`。
+- 如 `http://localhost:8090/health` 返回 Invalid host，用 `http://127.0.0.1:8090/health` 访问 UnitySkills。

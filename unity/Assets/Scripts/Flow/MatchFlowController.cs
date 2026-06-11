@@ -54,6 +54,14 @@ namespace SoccerBot
         [SerializeField, Range(0f, 0.4f)] private float _receivePowerBonus = 0.18f;
         [SerializeField, Range(0f, 0.4f)] private float _poorReceivePowerPenalty = 0.12f;
 
+        [Header("Foot Contacts")]
+        [SerializeField] private bool _acceptFootContacts = true;
+        [SerializeField] private float _footReceivePerfectSpeed = 0.45f;
+        [SerializeField] private float _footReceiveFailSpeed = 2.8f;
+        [SerializeField, Range(0f, 1f)] private float _minimumFootShotPower = 0.18f;
+        [SerializeField, Range(0f, 1f)] private float _footShotSwingDirectionWeight = 0.65f;
+        [SerializeField, Range(0f, 0.5f)] private float _footShotLift = 0.08f;
+
         [Header("Recovery Mash")]
         [SerializeField] private bool _enableRecoveryMash = true;
         [SerializeField, Range(0.8f, 5f)] private float _recoveryDuration = 2.4f;
@@ -1088,6 +1096,45 @@ namespace SoccerBot
             HideRecoveryHud();
         }
 
+        public bool HandleFootBallContact(FootContactData data)
+        {
+            if (!_acceptFootContacts || !_isMatchRunning)
+                return false;
+
+            if (CurrentPhase == Phase.Recovery)
+            {
+                HandleRecoveryPress();
+                return true;
+            }
+
+            if (CurrentPhase == Phase.Pass)
+            {
+                if (_receiveAttempted)
+                    return true;
+
+                _receiveAttempted = true;
+                _receiveQuality = EvaluateFootReceiveQuality(data);
+                if (_player != null) _player.ReceptionEnabled = false;
+                _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, true, 1.2f);
+                _receptionTargetIndicator?.ShowFeedback(_receiveQuality, true);
+                Debug.Log($"[MatchFlow] Foot receive ({data.Foot}) quality={_receiveQuality:0.00} speed={data.ContactSpeed:0.00} accuracy={data.Accuracy01:0.00}");
+                return true;
+            }
+
+            if (CurrentPhase == Phase.Possession)
+            {
+                if (data.Power01 < _minimumFootShotPower)
+                    return false;
+
+                Vector3 direction = BuildFootShotDirection(data);
+                HandlePlayerShot(data.Power01, direction);
+                Debug.Log($"[MatchFlow] Foot shot ({data.Foot}) power={data.Power01:0.00} speed={data.ContactSpeed:0.00} triggerIntent={data.ShootIntentHeld}");
+                return true;
+            }
+
+            return false;
+        }
+
         private void HandleReceiveAttempt(Vector3 direction)
         {
             if (!_isMatchRunning) return;
@@ -1106,6 +1153,55 @@ namespace SoccerBot
             _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, true, 1.2f);
             _receptionTargetIndicator?.ShowFeedback(_receiveQuality, true);
             Debug.Log($"[MatchFlow] Receive quality: {_receiveQuality:0.00}");
+        }
+
+        private float EvaluateFootReceiveQuality(FootContactData data)
+        {
+            Vector3 incoming = Vector3.zero;
+            if (_playerTransform != null && _ball != null)
+                incoming = Flatten(_ball.transform.position - _playerTransform.position);
+            if (incoming.sqrMagnitude < 0.0001f)
+                incoming = Flatten(_currentPassStart - _currentPassEnd);
+
+            Vector3 footFacing = data.FootForward.sqrMagnitude > 0.0001f
+                ? data.FootForward
+                : (_playerTransform != null ? _playerTransform.forward : Vector3.forward);
+
+            float timingAndFacing = ReceptionRules.EvaluateQuality(
+                _passProgress01,
+                footFacing,
+                incoming,
+                new ReceptionTuning(
+                    _receiveWindowStart01,
+                    _receivePerfect01,
+                    _receiveWindowEnd01,
+                    _receiveFacingFullScoreAngle,
+                    _receiveFacingFailAngle));
+
+            float speedScore = 1f - Mathf.InverseLerp(
+                Mathf.Max(0.001f, _footReceivePerfectSpeed),
+                Mathf.Max(_footReceivePerfectSpeed + 0.001f, _footReceiveFailSpeed),
+                data.ContactSpeed);
+
+            return Mathf.Clamp01(timingAndFacing * 0.62f + speedScore * 0.25f + data.Accuracy01 * 0.13f);
+        }
+
+        private Vector3 BuildFootShotDirection(FootContactData data)
+        {
+            Vector3 swing = Flatten(data.SwingDirection);
+            Vector3 face = Flatten(data.FootForward);
+            Vector3 aim = GetAttackForward();
+
+            Vector3 contactDirection = swing.sqrMagnitude > 0.0001f
+                ? swing.normalized
+                : (face.sqrMagnitude > 0.0001f ? face.normalized : aim);
+
+            Vector3 direction = Vector3.Slerp(aim, contactDirection, _footShotSwingDirectionWeight);
+            direction.y = Mathf.Clamp(data.SwingDirection.y * 0.35f + _footShotLift, 0.02f, 0.45f);
+            if (direction.sqrMagnitude < 0.0001f)
+                direction = aim;
+            direction.Normalize();
+            return direction;
         }
 
         private void HandleRecoveryPress()
