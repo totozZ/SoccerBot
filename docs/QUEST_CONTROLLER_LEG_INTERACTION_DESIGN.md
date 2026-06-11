@@ -264,7 +264,7 @@
 1. 是否两个手柄都要显示为腿，还是只把右手柄映射成主射门脚，左手柄暂时作为支撑脚？
 A: 两个都是腿比较符合直觉
 2. 手柄握在手里时，脚模型应该直接出现在手柄位置，还是需要一个“手柄到脚”的固定偏移，让玩家拿手柄模拟脚的位置？
-A: 直接出现在手柄位置比较符合直觉，手柄到脚的偏移量为 (0, 0.3, 0.1)。
+A: 直接出现在手柄位置比较符合直觉。Quest Link 实测后，当前手柄到脚的默认偏移量为 `(0, -0.15, 0.1)`，整体腿/脚显示缩放为 `0.5`。
 3. 射门阶段是否必须按住右扳机才允许触球，还是任何高速脚部碰撞都可触发？
 A: 任何高速脚部碰撞都可触发，右扳机只是作为射门意图 gating，不直接决定球飞出去。
 4. 球是否要完全物理化，还是先保持当前剧情球路，只在玩家交互窗口短暂物理化？
@@ -274,19 +274,80 @@ A: 完全物理化
 
 ## Implementation Notes
 
+### Current Runtime Calibration
+
+- `QuestControllerLegRig` now uses render-camera-relative tracking:
+  - It resolves `Player/FpsAnchor/FpsCamera` first, then falls back to `Camera.main`.
+  - It reconstructs controller world pose from controller local pose plus HMD local pose, avoiding the earlier issue where the foot appeared in the upper-right sky when XR Origin space did not match the actual render camera space.
+- Runtime-created legs are parented under `Player`, not under XR Origin, so they are easier to find in Hierarchy.
+- Default visual-only safety remains enabled:
+  - `enableFootBallInteraction = false`
+  - `ensurePhysicalBallInteractor = false`
+  - `TrackedLegController.interactionEnabled = false`
+  - With these defaults, foot visuals do not affect ball physics, receive/pass/shoot, or MatchFlow.
+- Current Quest Link calibration from headset testing:
+  - Left foot offset: `(0, -0.15, 0.1)`
+  - Right foot offset: `(0, -0.15, 0.1)`
+  - `Leg Scale = 0.5`
+  - `Live Update In Play Mode = true`
+- Runtime tuning should be done on `Player -> QuestControllerLegRig`, not directly on generated `LeftTrackedLeg` / `RightTrackedLeg` transforms. Generated leg transforms are continuously driven by tracking and will override manual Transform edits.
+- `QuestControllerLegRig` now exposes shared size controls:
+  - `Leg Scale`
+  - `Foot Collider Center`
+  - `Foot Size`
+  - `Shin Collider Center`
+  - `Shin Radius`
+  - `Shin Height`
+- `Live Update In Play Mode` pushes changed Inspector values from `QuestControllerLegRig` into both generated legs while Play Mode is running.
+- Quest Link / Air Link is the recommended fast test path for foot placement:
+  - Use Unity Play Mode through Quest Link for real HMD/controller tracking.
+  - Use APK only for final Android/standalone validation.
+  - Purple materials in Quest Link PC Play Mode can be ignored for now because APK testing previously showed resources loading correctly.
+
+### Current Known Issues
+
+1. Left foot is not visible in the current Play/Quest Link test.
+   - In Scene view, using Shift+F on left and right foot appears to frame nearly the same object or same-looking object.
+   - Next session should first diagnose whether `LeftTrackedLeg` and `RightTrackedLeg` are truly distinct GameObjects with distinct handedness, input bindings, visual roots, and positions.
+   - Check that `FindExistingLeg(handedness)` does not accidentally bind both references to the same `TrackedLegController`.
+   - Check whether left controller input actions have valid controls and whether `_hasTracking` becomes false for the left leg, which would hide its visual/colliders.
+2. Default foot visual is still a cube-like placeholder.
+   - It currently reads visually like a brick, even after scale reduction.
+   - Next visual pass should replace the cube foot with a small football-boot-like shape: compact, tapered, water-drop/teardrop silhouette, slightly wider at heel/midfoot and narrower at toe.
+   - Keep it procedural/simple for now unless importing a real boot mesh is explicitly chosen.
+   - Preserve clear left/right color distinction until the tracking issue is fixed.
+
+### Planned Next Changes
+
+- Diagnose left-foot invisibility before changing the model:
+  - Log or inspect left/right `TrackedLegController.Handedness`.
+  - Confirm `_leftLeg != _rightLeg`.
+  - Confirm generated hierarchy contains separate `LeftTrackedLeg/TrackedLegVisual/Foot` and `RightTrackedLeg/TrackedLegVisual/Foot`.
+  - Confirm left controller input bindings are live in Quest Link and APK paths.
+- Improve foot mesh shape after left/right tracking is reliable:
+  - Replace the current cube `Foot` primitive with a low-poly procedural boot mesh or a small set of scaled primitives.
+  - Suggested procedural mesh points:
+    - Longer local Z axis for shoe length.
+    - Narrower toe than midfoot.
+    - Slightly rounded/tapered toe cap.
+    - Low height profile, not a block.
+  - Keep collider simple (`BoxCollider`) for now; visual mesh can be prettier than the physics shape.
+
 ### Runtime Components
 
 - `unity/Assets/Scripts/Player/TrackedLegController.cs`
   - 直接读取 `<XRController>{LeftHand|RightHand}/devicePosition`、`deviceRotation`、`deviceVelocity`、`deviceAngularVelocity`。
   - `Update` 缓存最新 tracking pose，`FixedUpdate` 使用 `Rigidbody.MovePosition` / `MoveRotation` 同步 kinematic 脚部刚体。
-  - 默认偏移为 `(0, 0.3, 0.1)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
+  - 默认偏移为 `(0, -0.15, 0.1)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
   - 自动创建简化可视模型：脚部 box、小腿 capsule、左右脚颜色区分。
   - 自动配置脚部 `Rigidbody`、`BoxCollider` 和小腿 `CapsuleCollider`，接触球时发送 `FootContactData`。
 
 - `unity/Assets/Scripts/Player/QuestControllerLegRig.cs`
   - 运行时创建 `LeftTrackedLeg` / `RightTrackedLeg`。
-  - 优先把腿放到 `XROrigin.CameraFloorOffsetObject` tracking space 下；找不到 XR Origin 时退回当前 Player。
-  - 自动给当前 `BallController` 挂载 `PhysicalBallInteractor`，让脚触球事件进入球/比赛流程。
+  - 手柄位置默认按“手柄相对 HMD 的 tracking pose”映射到实际渲染相机 `Player/FpsAnchor/FpsCamera` 附近，避免 XR Origin 与玩家相机空间不一致时脚飘到天上。
+  - 默认 `enableFootBallInteraction = false` 且不自动给球挂 `PhysicalBallInteractor`；先用于调试显示位置，不影响现有 MatchFlow/球流程。
+  - 当前默认 `Leg Scale = 0.5`，并支持 Play Mode 中从 `QuestControllerLegRig` 实时同步 offset/scale/size 到左右脚。
+  - 需要进入脚触球阶段时，再在 Inspector 打开 `enableFootBallInteraction` 和 `ensurePhysicalBallInteractor`。
 
 - `unity/Assets/Scripts/Ball/PhysicalBallInteractor.cs`
   - 确保球有 `Rigidbody` 和 `SphereCollider`。
@@ -314,5 +375,5 @@ A: 完全物理化
 
 - Play Mode 中应出现 `LeftTrackedLeg` 和 `RightTrackedLeg`。
 - Quest 真机中脚/鞋位置应跟随左右手柄真实位置，转动手柄时脚模型同步旋转。
-- 脚碰到球时 Console 会打印 `[TrackedLeg]`；比赛流程消费触球时会打印 `[MatchFlow] Foot receive` 或 `[MatchFlow] Foot shot`。
+- 默认 visual-only 时脚碰球不会改球和比赛流程。打开脚触球后，Console 会打印 `[TrackedLeg]`；比赛流程消费触球时会打印 `[MatchFlow] Foot receive` 或 `[MatchFlow] Foot shot`。
 - 如 `http://localhost:8090/health` 返回 Invalid host，用 `http://127.0.0.1:8090/health` 访问 UnitySkills。

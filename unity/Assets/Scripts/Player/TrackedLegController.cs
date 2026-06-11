@@ -83,7 +83,9 @@ namespace SoccerBot
         [Header("Tracking")]
         [SerializeField] private TrackedLegHandedness _handedness = TrackedLegHandedness.Right;
         [SerializeField] private Transform _trackingSpaceRoot;
-        [SerializeField] private Vector3 _poseOffsetPosition = new Vector3(0f, 0.3f, 0.1f);
+        [SerializeField] private Transform _renderCamera;
+        [SerializeField] private bool _useRenderCameraRelativePose = true;
+        [SerializeField] private Vector3 _poseOffsetPosition = new Vector3(0f, -0.15f, 0.1f);
         [SerializeField] private Vector3 _poseOffsetEuler = Vector3.zero;
 
         [Header("Body")]
@@ -99,6 +101,7 @@ namespace SoccerBot
         [SerializeField] private bool _buildDefaultVisual = true;
 
         [Header("Interaction")]
+        [SerializeField] private bool _interactionEnabled = false;
         [SerializeField] private LayerMask _ballLayer = ~0;
         [SerializeField] private float _minInteractionSpeed = 0.15f;
         [SerializeField] private float _fullPowerSpeed = 4.0f;
@@ -110,6 +113,8 @@ namespace SoccerBot
         private InputAction _velocityAction;
         private InputAction _angularVelocityAction;
         private InputAction _shootIntentAction;
+        private InputAction _hmdPositionAction;
+        private InputAction _hmdRotationAction;
 
         private Vector3 _latestWorldPosition;
         private Quaternion _latestWorldRotation = Quaternion.identity;
@@ -131,18 +136,37 @@ namespace SoccerBot
         public void Configure(
             TrackedLegHandedness handedness,
             Transform trackingSpaceRoot,
+            Transform renderCamera,
             Vector3 poseOffsetPosition,
             Vector3 poseOffsetEuler,
+            Vector3 footColliderCenter,
+            Vector3 footColliderSize,
+            Vector3 shinColliderCenter,
+            float shinColliderRadius,
+            float shinColliderHeight,
             LayerMask ballLayer,
-            bool buildDefaultVisual)
+            bool buildDefaultVisual,
+            bool interactionEnabled)
         {
             _handedness = handedness;
             _trackingSpaceRoot = trackingSpaceRoot;
+            _renderCamera = renderCamera;
             _poseOffsetPosition = poseOffsetPosition;
             _poseOffsetEuler = poseOffsetEuler;
+            _footColliderCenter = footColliderCenter;
+            _footColliderSize = ClampSize(footColliderSize, new Vector3(0.02f, 0.02f, 0.02f));
+            _shinColliderCenter = shinColliderCenter;
+            _shinColliderRadius = Mathf.Max(0.005f, shinColliderRadius);
+            _shinColliderHeight = Mathf.Max(0.02f, shinColliderHeight);
             _ballLayer = ballLayer;
             _buildDefaultVisual = buildDefaultVisual;
+            _interactionEnabled = interactionEnabled;
             name = handedness == TrackedLegHandedness.Left ? "LeftTrackedLeg" : "RightTrackedLeg";
+            EnsureColliders();
+            if (_buildDefaultVisual)
+                EnsureDefaultVisual();
+            ApplyDefaultVisualShape();
+            ApplyColliderInteractionMode();
             ApplyDefaultVisualMaterials();
         }
 
@@ -167,6 +191,8 @@ namespace SoccerBot
             DisposeAction(ref _velocityAction);
             DisposeAction(ref _angularVelocityAction);
             DisposeAction(ref _shootIntentAction);
+            DisposeAction(ref _hmdPositionAction);
+            DisposeAction(ref _hmdRotationAction);
             _hasTracking = false;
             _hasSample = false;
         }
@@ -208,7 +234,11 @@ namespace SoccerBot
         private void ResolveTrackingSpace()
         {
             if (_trackingSpaceRoot != null)
+            {
+                if (_renderCamera == null)
+                    ResolveRenderCamera();
                 return;
+            }
 
             var origin = FindFirstObjectByType<XROrigin>(FindObjectsInactive.Include);
             if (origin != null)
@@ -218,6 +248,29 @@ namespace SoccerBot
                 else
                     _trackingSpaceRoot = origin.transform;
             }
+
+            ResolveRenderCamera();
+        }
+
+        private void ResolveRenderCamera()
+        {
+            if (_renderCamera != null)
+                return;
+
+            var player = GameObject.Find("Player");
+            if (player != null)
+            {
+                var fpsCamera = player.transform.Find("FpsAnchor/FpsCamera");
+                if (fpsCamera != null)
+                {
+                    _renderCamera = fpsCamera;
+                    return;
+                }
+            }
+
+            Camera main = Camera.main;
+            if (main != null)
+                _renderCamera = main.transform;
         }
 
         private void EnsureBody()
@@ -245,7 +298,7 @@ namespace SoccerBot
             {
                 footBox.center = _footColliderCenter;
                 footBox.size = _footColliderSize;
-                footBox.isTrigger = false;
+                footBox.isTrigger = !_interactionEnabled;
             }
 
             if (_shinCollider == null)
@@ -269,18 +322,22 @@ namespace SoccerBot
             _shinCollider.radius = _shinColliderRadius;
             _shinCollider.height = _shinColliderHeight;
             _shinCollider.direction = 1;
-            _shinCollider.isTrigger = false;
+            _shinCollider.isTrigger = !_interactionEnabled;
         }
 
         private void EnsureDefaultVisual()
         {
             if (_visualRoot != null)
+            {
+                ApplyDefaultVisualShape();
                 return;
+            }
 
             var existing = transform.Find("TrackedLegVisual");
             if (existing != null)
             {
                 _visualRoot = existing;
+                ApplyDefaultVisualShape();
                 return;
             }
 
@@ -317,6 +374,34 @@ namespace SoccerBot
             shin.transform.localScale = new Vector3(_shinColliderRadius * 2f, _shinColliderHeight * 0.5f, _shinColliderRadius * 2f);
             RemoveCollider(shin);
             SetMaterial(shin, sockMaterial);
+        }
+
+        private void ApplyDefaultVisualShape()
+        {
+            if (_visualRoot == null || _visualRoot.name != "TrackedLegVisual")
+                return;
+
+            Transform foot = _visualRoot.Find("Foot");
+            if (foot != null)
+            {
+                foot.localPosition = _footColliderCenter;
+                foot.localScale = _footColliderSize;
+
+                Transform stripe = foot.Find("FootStrikeStripe");
+                if (stripe != null)
+                {
+                    stripe.localPosition = new Vector3(_handedness == TrackedLegHandedness.Left ? 0.54f : -0.54f, 0.12f, 0.16f);
+                    stripe.localScale = new Vector3(0.08f, 0.18f, 0.56f);
+                }
+            }
+
+            Transform shin = _visualRoot.Find("Shin");
+            if (shin != null)
+            {
+                shin.localPosition = _shinColliderCenter;
+                shin.localRotation = Quaternion.identity;
+                shin.localScale = new Vector3(_shinColliderRadius * 2f, _shinColliderHeight * 0.5f, _shinColliderRadius * 2f);
+            }
         }
 
         private void ApplyDefaultVisualMaterials()
@@ -363,6 +448,14 @@ namespace SoccerBot
             _angularVelocityAction.AddBinding($"<XRController>{{{hand}}}/deviceAngularVelocity");
             _angularVelocityAction.Enable();
 
+            _hmdPositionAction = new InputAction($"{hand}LegHmdPosition", InputActionType.Value, expectedControlType: "Vector3");
+            _hmdPositionAction.AddBinding("<XRHMD>/centerEyePosition");
+            _hmdPositionAction.Enable();
+
+            _hmdRotationAction = new InputAction($"{hand}LegHmdRotation", InputActionType.Value, expectedControlType: "Quaternion");
+            _hmdRotationAction.AddBinding("<XRHMD>/centerEyeRotation");
+            _hmdRotationAction.Enable();
+
             if (_handedness == TrackedLegHandedness.Right)
             {
                 _shootIntentAction = new InputAction("RightFootShootIntent", InputActionType.Button);
@@ -393,18 +486,15 @@ namespace SoccerBot
             Vector3 offsetLocalPosition = localPosition + localRotation * _poseOffsetPosition;
             Quaternion offsetLocalRotation = localRotation * offsetRotation;
 
-            Vector3 worldPosition = _trackingSpaceRoot != null
-                ? _trackingSpaceRoot.TransformPoint(offsetLocalPosition)
-                : offsetLocalPosition;
-            Quaternion worldRotation = _trackingSpaceRoot != null
-                ? _trackingSpaceRoot.rotation * offsetLocalRotation
-                : offsetLocalRotation;
+            Quaternion trackingToWorldRotation = ResolveTrackingToWorldRotation();
+            Vector3 worldPosition = ResolveWorldPosition(offsetLocalPosition, trackingToWorldRotation);
+            Quaternion worldRotation = trackingToWorldRotation * offsetLocalRotation;
 
             float now = Time.time;
             float dt = _hasSample ? Mathf.Max(now - _lastSampleTime, 0.0001f) : Mathf.Max(Time.deltaTime, 0.0001f);
 
-            Vector3 worldVelocity = ReadWorldVelocity(worldPosition, dt);
-            Vector3 worldAngularVelocity = ReadWorldAngularVelocity(worldRotation, dt);
+            Vector3 worldVelocity = ReadWorldVelocity(worldPosition, dt, trackingToWorldRotation);
+            Vector3 worldAngularVelocity = ReadWorldAngularVelocity(worldRotation, dt, trackingToWorldRotation);
 
             _latestWorldPosition = worldPosition;
             _latestWorldRotation = worldRotation;
@@ -418,33 +508,65 @@ namespace SoccerBot
             _hasSample = true;
         }
 
-        private Vector3 ReadWorldVelocity(Vector3 worldPosition, float dt)
+        private Quaternion ResolveTrackingToWorldRotation()
+        {
+            if (_useRenderCameraRelativePose && _renderCamera != null && TryReadHmdRotation(out Quaternion hmdLocalRotation))
+                return _renderCamera.rotation * Quaternion.Inverse(hmdLocalRotation);
+
+            return _trackingSpaceRoot != null ? _trackingSpaceRoot.rotation : Quaternion.identity;
+        }
+
+        private Vector3 ResolveWorldPosition(Vector3 offsetLocalPosition, Quaternion trackingToWorldRotation)
+        {
+            if (_useRenderCameraRelativePose && _renderCamera != null && TryReadHmdPosition(out Vector3 hmdLocalPosition))
+                return _renderCamera.position + trackingToWorldRotation * (offsetLocalPosition - hmdLocalPosition);
+
+            return _trackingSpaceRoot != null
+                ? _trackingSpaceRoot.TransformPoint(offsetLocalPosition)
+                : offsetLocalPosition;
+        }
+
+        private bool TryReadHmdPosition(out Vector3 position)
+        {
+            position = Vector3.zero;
+            if (_hmdPositionAction == null || _hmdPositionAction.controls.Count == 0)
+                return false;
+
+            position = _hmdPositionAction.ReadValue<Vector3>();
+            return true;
+        }
+
+        private bool TryReadHmdRotation(out Quaternion rotation)
+        {
+            rotation = Quaternion.identity;
+            if (_hmdRotationAction == null || _hmdRotationAction.controls.Count == 0)
+                return false;
+
+            rotation = _hmdRotationAction.ReadValue<Quaternion>();
+            if (rotation.x == 0f && rotation.y == 0f && rotation.z == 0f && rotation.w == 0f)
+                rotation = Quaternion.identity;
+            return true;
+        }
+
+        private Vector3 ReadWorldVelocity(Vector3 worldPosition, float dt, Quaternion trackingToWorldRotation)
         {
             if (_velocityAction != null && _velocityAction.controls.Count > 0)
             {
                 Vector3 localVelocity = _velocityAction.ReadValue<Vector3>();
                 if (localVelocity.sqrMagnitude > 0.000001f)
-                {
-                    return _trackingSpaceRoot != null
-                        ? _trackingSpaceRoot.TransformDirection(localVelocity)
-                        : localVelocity;
-                }
+                    return trackingToWorldRotation * localVelocity;
             }
 
             return _hasSample ? (worldPosition - _lastSampleWorldPosition) / dt : Vector3.zero;
         }
 
-        private Vector3 ReadWorldAngularVelocity(Quaternion worldRotation, float dt)
+        private Vector3 ReadWorldAngularVelocity(Quaternion worldRotation, float dt, Quaternion trackingToWorldRotation)
         {
             if (_angularVelocityAction != null && _angularVelocityAction.controls.Count > 0)
             {
                 Vector3 localAngularVelocity = _angularVelocityAction.ReadValue<Vector3>();
                 if (localAngularVelocity.sqrMagnitude > 0.000001f)
-                {
-                    return _trackingSpaceRoot != null
-                        ? _trackingSpaceRoot.TransformDirection(localAngularVelocity)
-                        : localAngularVelocity;
-                }
+                    return trackingToWorldRotation * localAngularVelocity;
             }
 
             if (!_hasSample)
@@ -462,6 +584,8 @@ namespace SoccerBot
 
         private void PublishCollisionContact(Collision collision)
         {
+            if (!_interactionEnabled)
+                return;
             if (collision == null || collision.collider == null || !IsCandidateBall(collision.collider))
                 return;
 
@@ -475,6 +599,8 @@ namespace SoccerBot
 
         private void PublishTriggerContact(Collider other)
         {
+            if (!_interactionEnabled)
+                return;
             if (other == null || !IsCandidateBall(other))
                 return;
 
@@ -543,6 +669,14 @@ namespace SoccerBot
             return true;
         }
 
+        private void ApplyColliderInteractionMode()
+        {
+            if (_footCollider != null)
+                _footCollider.isTrigger = !_interactionEnabled;
+            if (_shinCollider != null)
+                _shinCollider.isTrigger = !_interactionEnabled;
+        }
+
         private void SetTrackingObjectsActive(bool active)
         {
             if (_footCollider != null && _footCollider.enabled != active)
@@ -573,6 +707,14 @@ namespace SoccerBot
             var collider = go.GetComponent<Collider>();
             if (collider != null)
                 Destroy(collider);
+        }
+
+        private static Vector3 ClampSize(Vector3 size, Vector3 minimum)
+        {
+            return new Vector3(
+                Mathf.Max(minimum.x, size.x),
+                Mathf.Max(minimum.y, size.y),
+                Mathf.Max(minimum.z, size.z));
         }
 
         private static void DisposeAction(ref InputAction action)

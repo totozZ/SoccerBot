@@ -9,19 +9,30 @@ namespace SoccerBot
     {
         [Header("Runtime Creation")]
         [SerializeField] private bool _createOnStart = true;
+        [SerializeField] private bool _liveUpdateInPlayMode = true;
         [SerializeField] private bool _buildDefaultVisuals = true;
-        [SerializeField] private bool _ensurePhysicalBallInteractor = true;
+        [SerializeField] private bool _enableFootBallInteraction = false;
+        [SerializeField] private bool _ensurePhysicalBallInteractor = false;
 
         [Header("Tracking Space")]
         [SerializeField] private Transform _trackingSpaceRoot;
+        [SerializeField] private Transform _renderCamera;
 
         [Header("Left Foot Offset")]
-        [SerializeField] private Vector3 _leftPoseOffsetPosition = new Vector3(0f, 0.3f, 0.1f);
+        [SerializeField] private Vector3 _leftPoseOffsetPosition = new Vector3(0f, -0.15f, 0.1f);
         [SerializeField] private Vector3 _leftPoseOffsetEuler = Vector3.zero;
 
         [Header("Right Foot Offset")]
-        [SerializeField] private Vector3 _rightPoseOffsetPosition = new Vector3(0f, 0.3f, 0.1f);
+        [SerializeField] private Vector3 _rightPoseOffsetPosition = new Vector3(0f, -0.15f, 0.1f);
         [SerializeField] private Vector3 _rightPoseOffsetEuler = Vector3.zero;
+
+        [Header("Leg Size")]
+        [SerializeField] private float _legScale = 0.5f;
+        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.08f);
+        [SerializeField] private Vector3 _footSize = new Vector3(0.18f, 0.11f, 0.36f);
+        [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
+        [SerializeField] private float _shinRadius = 0.055f;
+        [SerializeField] private float _shinHeight = 0.5f;
 
         [Header("Interaction")]
         [SerializeField] private LayerMask _ballLayer = ~0;
@@ -33,15 +44,37 @@ namespace SoccerBot
         public TrackedLegController LeftLeg => _leftLeg;
         public TrackedLegController RightLeg => _rightLeg;
 
+        private bool _settingsDirty;
+
         private void Start()
         {
             if (_createOnStart)
                 EnsureRig();
+
+            _settingsDirty = false;
+        }
+
+        private void Update()
+        {
+            if (!_liveUpdateInPlayMode || !_createOnStart || !_settingsDirty)
+                return;
+
+            ApplySettingsToExistingLegs();
+            _settingsDirty = false;
+        }
+
+        private void OnValidate()
+        {
+            _legScale = Mathf.Max(0.05f, _legScale);
+            _shinRadius = Mathf.Max(0.005f, _shinRadius);
+            _shinHeight = Mathf.Max(0.02f, _shinHeight);
+            _settingsDirty = true;
         }
 
         public void EnsureRig()
         {
             ResolveTrackingSpace();
+            ResolveRenderCamera();
             _leftLeg = FindOrCreateLeg(
                 TrackedLegHandedness.Left,
                 _leftLeg,
@@ -71,6 +104,27 @@ namespace SoccerBot
             }
         }
 
+        private void ResolveRenderCamera()
+        {
+            if (_renderCamera != null)
+                return;
+
+            var player = GameObject.Find("Player");
+            if (player != null)
+            {
+                var fpsCamera = player.transform.Find("FpsAnchor/FpsCamera");
+                if (fpsCamera != null)
+                {
+                    _renderCamera = fpsCamera;
+                    return;
+                }
+            }
+
+            Camera main = Camera.main;
+            if (main != null)
+                _renderCamera = main.transform;
+        }
+
         private TrackedLegController FindOrCreateLeg(
             TrackedLegHandedness handedness,
             TrackedLegController current,
@@ -82,21 +136,51 @@ namespace SoccerBot
 
             if (current == null)
             {
-                Transform parent = _trackingSpaceRoot != null ? _trackingSpaceRoot : transform;
                 string legName = handedness == TrackedLegHandedness.Left ? "LeftTrackedLeg" : "RightTrackedLeg";
                 var legGo = new GameObject(legName);
-                legGo.transform.SetParent(parent, false);
+                legGo.transform.SetParent(transform, false);
                 current = legGo.AddComponent<TrackedLegController>();
             }
 
+            ConfigureLeg(current, handedness, poseOffsetPosition, poseOffsetEuler);
+            return current;
+        }
+
+        private void ApplySettingsToExistingLegs()
+        {
+            if (_leftLeg == null || _rightLeg == null)
+            {
+                EnsureRig();
+                return;
+            }
+
+            ResolveTrackingSpace();
+            ResolveRenderCamera();
+            ConfigureLeg(_leftLeg, TrackedLegHandedness.Left, _leftPoseOffsetPosition, _leftPoseOffsetEuler);
+            ConfigureLeg(_rightLeg, TrackedLegHandedness.Right, _rightPoseOffsetPosition, _rightPoseOffsetEuler);
+        }
+
+        private void ConfigureLeg(
+            TrackedLegController current,
+            TrackedLegHandedness handedness,
+            Vector3 poseOffsetPosition,
+            Vector3 poseOffsetEuler)
+        {
+            float legScale = Mathf.Max(0.05f, _legScale);
             current.Configure(
                 handedness,
                 _trackingSpaceRoot,
+                _renderCamera,
                 poseOffsetPosition,
                 poseOffsetEuler,
+                _footColliderCenter * legScale,
+                _footSize * legScale,
+                _shinColliderCenter * legScale,
+                _shinRadius * legScale,
+                _shinHeight * legScale,
                 _ballLayer,
-                _buildDefaultVisuals);
-            return current;
+                _buildDefaultVisuals,
+                _enableFootBallInteraction);
         }
 
         private static TrackedLegController FindExistingLeg(TrackedLegHandedness handedness)
