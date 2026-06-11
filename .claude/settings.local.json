@@ -363,7 +363,9 @@
       "Bash(ls Assets/Scenes)",
       "Bash(grep -rln \"MainMenuPanel\\\\|IntroPanel\\\\|XRSetup\\\\|CrowdAnimator\\\\|LightingConfigurator\" Assets/Scenes)",
       "Bash(cd \"/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity\" && grep -n \"m_Name: \" Assets/Scenes/Main.unity | grep -iE \"player|fpsanchor|fpscamera|maincamera|xr origin|stadium|directional|mainmenu|intro\" | head -40)",
-      "Read(//c/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Scenes/**)"
+      "Read(//c/c/Users/95833/Desktop/WayiProject/project/足球机器人/SoccerBot/unity/Assets/Scenes/**)",
+      "Bash(git mv *)",
+      "Bash(echo \"=== exit: $? ===\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\95833\\Desktop\\WayiProject\\project\\足球机器人\\SoccerBot\\.claude\\skills"

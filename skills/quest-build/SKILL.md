@@ -23,7 +23,7 @@ SoccerBot 项目专用。改完代码 → 一条命令构建 APK → 推到 Ques
 ## 前置检查（每次都跑）
 
 并行执行：
-1. **Unity 路径**：读 `.claude/skills/quest-build/unity-path.txt`。不存在就让用户输入，输入后写入该文件。常见路径：
+1. **Unity 路径**：读 `skills/quest-build/unity-path.txt`。不存在就让用户输入，输入后写入该文件。常见路径：
    - `C:/Program Files/Unity/Hub/Editor/6000.4.7f1/Editor/Unity.exe`
 2. **adb**：`adb version`。失败就提示用户装 Android Platform Tools 并加 PATH，停。
 3. **Quest 连接**：`adb devices`。没有 device 就提示「确认 Quest 已开机、USB 连接、戴上头显在弹窗里允许调试」，停。
