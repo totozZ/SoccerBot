@@ -124,6 +124,8 @@ namespace SoccerBot
         private Quaternion _lastSampleWorldRotation = Quaternion.identity;
         private bool _hasTracking;
         private bool _hasSample;
+        private bool _inputActionsMatchHandedness;
+        private bool _loggedTrackingDiagnostics;
         private float _lastSampleTime;
         private float _lastContactLogTime;
 
@@ -148,6 +150,7 @@ namespace SoccerBot
             bool buildDefaultVisual,
             bool interactionEnabled)
         {
+            bool handednessChanged = _handedness != handedness;
             _handedness = handedness;
             _trackingSpaceRoot = trackingSpaceRoot;
             _renderCamera = renderCamera;
@@ -162,6 +165,11 @@ namespace SoccerBot
             _buildDefaultVisual = buildDefaultVisual;
             _interactionEnabled = interactionEnabled;
             name = handedness == TrackedLegHandedness.Left ? "LeftTrackedLeg" : "RightTrackedLeg";
+            if (handednessChanged)
+            {
+                _loggedTrackingDiagnostics = false;
+                RecreateInputActionsIfEnabled();
+            }
             EnsureColliders();
             if (_buildDefaultVisual)
                 EnsureDefaultVisual();
@@ -350,12 +358,10 @@ namespace SoccerBot
             Material sockMaterial = CreateMaterial("Tracked Sock", new Color(0.92f, 0.95f, 1f, 1f));
             Material accentMaterial = CreateMaterial("Tracked Boot Stripe", new Color(1f, 0.86f, 0.12f, 1f));
 
-            var foot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var foot = CreateBootVisual("Foot");
             foot.name = "Foot";
             foot.transform.SetParent(_visualRoot, false);
             foot.transform.localPosition = _footColliderCenter;
-            foot.transform.localScale = _footColliderSize;
-            RemoveCollider(foot);
             SetMaterial(foot, bootMaterial);
 
             var stripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -385,13 +391,20 @@ namespace SoccerBot
             if (foot != null)
             {
                 foot.localPosition = _footColliderCenter;
-                foot.localScale = _footColliderSize;
+                foot.localScale = Vector3.one;
+                ApplyBootMesh(foot.gameObject);
 
                 Transform stripe = foot.Find("FootStrikeStripe");
                 if (stripe != null)
                 {
-                    stripe.localPosition = new Vector3(_handedness == TrackedLegHandedness.Left ? 0.54f : -0.54f, 0.12f, 0.16f);
-                    stripe.localScale = new Vector3(0.08f, 0.18f, 0.56f);
+                    stripe.localPosition = new Vector3(
+                        (_handedness == TrackedLegHandedness.Left ? 0.42f : -0.42f) * _footColliderSize.x,
+                        0.28f * _footColliderSize.y,
+                        0.08f * _footColliderSize.z);
+                    stripe.localScale = new Vector3(
+                        0.08f * _footColliderSize.x,
+                        0.16f * _footColliderSize.y,
+                        0.52f * _footColliderSize.z);
                 }
             }
 
@@ -430,6 +443,14 @@ namespace SoccerBot
 
         private void CreateInputActions()
         {
+            DisposeAction(ref _positionAction);
+            DisposeAction(ref _rotationAction);
+            DisposeAction(ref _velocityAction);
+            DisposeAction(ref _angularVelocityAction);
+            DisposeAction(ref _shootIntentAction);
+            DisposeAction(ref _hmdPositionAction);
+            DisposeAction(ref _hmdRotationAction);
+
             string hand = _handedness == TrackedLegHandedness.Left ? "LeftHand" : "RightHand";
 
             _positionAction = new InputAction($"{hand}LegPosition", InputActionType.Value, expectedControlType: "Vector3");
@@ -462,20 +483,27 @@ namespace SoccerBot
                 _shootIntentAction.AddBinding("<XRController>{RightHand}/triggerPressed");
                 _shootIntentAction.Enable();
             }
+
+            _inputActionsMatchHandedness = true;
         }
 
         private void ReadTrackingPose()
         {
+            if (!_inputActionsMatchHandedness)
+                RecreateInputActionsIfEnabled();
+
             if (_positionAction == null || _rotationAction == null)
                 return;
             if (_positionAction.controls.Count == 0 || _rotationAction.controls.Count == 0)
             {
                 _hasTracking = false;
                 SetTrackingObjectsActive(false);
+                LogTrackingDiagnostics("no-controls");
                 return;
             }
 
             SetTrackingObjectsActive(true);
+            LogTrackingDiagnostics("tracking-controls-bound");
 
             Vector3 localPosition = _positionAction.ReadValue<Vector3>();
             Quaternion localRotation = _rotationAction.ReadValue<Quaternion>();
@@ -709,6 +737,77 @@ namespace SoccerBot
                 Destroy(collider);
         }
 
+        private GameObject CreateBootVisual(string objectName)
+        {
+            var go = new GameObject(objectName);
+            go.AddComponent<MeshFilter>();
+            go.AddComponent<MeshRenderer>();
+            ApplyBootMesh(go);
+            return go;
+        }
+
+        private void ApplyBootMesh(GameObject go)
+        {
+            var filter = go.GetComponent<MeshFilter>();
+            if (filter == null)
+                filter = go.AddComponent<MeshFilter>();
+            if (go.GetComponent<MeshRenderer>() == null)
+                go.AddComponent<MeshRenderer>();
+
+            filter.sharedMesh = BuildBootMesh(_footColliderSize);
+            RemoveCollider(go);
+        }
+
+        private static Mesh BuildBootMesh(Vector3 size)
+        {
+            float halfLength = size.z * 0.5f;
+            float bottom = -size.y * 0.5f;
+            float top = size.y * 0.5f;
+            float heelHalfWidth = size.x * 0.48f;
+            float midHalfWidth = size.x * 0.56f;
+            float toeHalfWidth = size.x * 0.22f;
+            float heelZ = -halfLength;
+            float midZ = size.z * 0.08f;
+            float toeZ = halfLength;
+
+            Vector3[] v =
+            {
+                new Vector3(-heelHalfWidth, bottom, heelZ),
+                new Vector3(heelHalfWidth, bottom, heelZ),
+                new Vector3(-midHalfWidth, bottom, midZ),
+                new Vector3(midHalfWidth, bottom, midZ),
+                new Vector3(-toeHalfWidth, bottom, toeZ),
+                new Vector3(toeHalfWidth, bottom, toeZ),
+                new Vector3(-heelHalfWidth * 0.9f, top, heelZ),
+                new Vector3(heelHalfWidth * 0.9f, top, heelZ),
+                new Vector3(-midHalfWidth, top, midZ),
+                new Vector3(midHalfWidth, top, midZ),
+                new Vector3(-toeHalfWidth * 0.7f, top * 0.82f, toeZ),
+                new Vector3(toeHalfWidth * 0.7f, top * 0.82f, toeZ),
+            };
+
+            int[] triangles =
+            {
+                0, 2, 1, 1, 2, 3,
+                2, 4, 3, 3, 4, 5,
+                6, 7, 8, 7, 9, 8,
+                8, 9, 10, 9, 11, 10,
+                0, 1, 6, 1, 7, 6,
+                4, 10, 5, 5, 10, 11,
+                0, 6, 2, 2, 6, 8,
+                2, 8, 4, 4, 8, 10,
+                1, 3, 7, 3, 9, 7,
+                3, 5, 9, 5, 11, 9,
+            };
+
+            var mesh = new Mesh { name = "ProceduralTrackedBoot" };
+            mesh.vertices = v;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
         private static Vector3 ClampSize(Vector3 size, Vector3 minimum)
         {
             return new Vector3(
@@ -725,6 +824,57 @@ namespace SoccerBot
             action.Disable();
             action.Dispose();
             action = null;
+        }
+
+        private void RecreateInputActionsIfEnabled()
+        {
+            _inputActionsMatchHandedness = false;
+            if (!isActiveAndEnabled)
+                return;
+
+            CreateInputActions();
+        }
+
+        private void LogTrackingDiagnostics(string reason)
+        {
+            if (_loggedTrackingDiagnostics)
+                return;
+
+            _loggedTrackingDiagnostics = true;
+            string hand = _handedness == TrackedLegHandedness.Left ? "LeftHand" : "RightHand";
+            string positionControl = DescribeFirstControl(_positionAction);
+            string rotationControl = DescribeFirstControl(_rotationAction);
+            string velocityControl = DescribeFirstControl(_velocityAction);
+            string visualPath = _visualRoot != null ? GetHierarchyPath(_visualRoot) : "null";
+            Debug.Log(
+                $"[TrackedLeg] Diagnostics {name} hand={_handedness} expected={hand} reason={reason} " +
+                $"ref={GetHashCode()} visual='{visualPath}' " +
+                $"positionControl='{positionControl}' rotationControl='{rotationControl}' velocityControl='{velocityControl}'");
+        }
+
+        private static string DescribeFirstControl(InputAction action)
+        {
+            if (action == null)
+                return "null-action";
+            if (action.controls.Count == 0)
+                return "none";
+            return action.controls[0].path;
+        }
+
+        private static string GetHierarchyPath(Transform item)
+        {
+            if (item == null)
+                return "null";
+
+            string path = item.name;
+            Transform current = item.parent;
+            while (current != null)
+            {
+                path = current.name + "/" + path;
+                current = current.parent;
+            }
+
+            return path;
         }
     }
 }

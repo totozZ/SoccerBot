@@ -45,6 +45,7 @@ namespace SoccerBot
         public TrackedLegController RightLeg => _rightLeg;
 
         private bool _settingsDirty;
+        private bool _loggedRigDiagnostics;
 
         private void Start()
         {
@@ -75,6 +76,12 @@ namespace SoccerBot
         {
             ResolveTrackingSpace();
             ResolveRenderCamera();
+            if (_leftLeg != null && _leftLeg == _rightLeg)
+            {
+                Debug.LogWarning("[QuestControllerLegRig] Left and right leg references pointed to the same TrackedLegController. Rebinding the right leg.");
+                _rightLeg = null;
+            }
+
             _leftLeg = FindOrCreateLeg(
                 TrackedLegHandedness.Left,
                 _leftLeg,
@@ -88,6 +95,8 @@ namespace SoccerBot
 
             if (_ensurePhysicalBallInteractor)
                 EnsurePhysicalBallInteractor();
+
+            LogRigDiagnostics();
         }
 
         private void ResolveTrackingSpace()
@@ -206,6 +215,41 @@ namespace SoccerBot
 
             if (ball.GetComponent<PhysicalBallInteractor>() == null)
                 ball.gameObject.AddComponent<PhysicalBallInteractor>();
+        }
+
+        private void LogRigDiagnostics()
+        {
+            if (_loggedRigDiagnostics)
+                return;
+
+            _loggedRigDiagnostics = true;
+            string left = DescribeLeg(_leftLeg);
+            string right = DescribeLeg(_rightLeg);
+            Debug.Log($"[QuestControllerLegRig] Leg bindings left={left} right={right} same={(_leftLeg != null && _leftLeg == _rightLeg)}");
+        }
+
+        private static string DescribeLeg(TrackedLegController leg)
+        {
+            if (leg == null)
+                return "null";
+
+            return $"{leg.name} hand={leg.Handedness} ref={leg.GetHashCode()} path='{GetHierarchyPath(leg.transform)}'";
+        }
+
+        private static string GetHierarchyPath(Transform item)
+        {
+            if (item == null)
+                return "null";
+
+            string path = item.name;
+            Transform current = item.parent;
+            while (current != null)
+            {
+                path = current.name + "/" + path;
+                current = current.parent;
+            }
+
+            return path;
         }
     }
 }

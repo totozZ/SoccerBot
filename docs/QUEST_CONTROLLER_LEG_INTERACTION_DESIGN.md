@@ -317,6 +317,23 @@ A: 完全物理化
    - Keep it procedural/simple for now unless importing a real boot mesh is explicitly chosen.
    - Preserve clear left/right color distinction until the tracking issue is fixed.
 
+### Latest Fix Notes
+
+- Fixed a likely left-foot tracking cause in `TrackedLegController`:
+  - New components were enabled with the default `Right` handedness before `QuestControllerLegRig.Configure(...)` changed the left leg to `Left`.
+  - This could leave `LeftTrackedLeg` named/colored as left while its input actions still read `<XRController>{RightHand}`.
+  - `Configure(...)` now recreates input actions whenever handedness changes while the component is active.
+- Added one-shot Play Mode diagnostics:
+  - `QuestControllerLegRig` logs left/right leg reference hashes and hierarchy paths, including whether both references point to the same component.
+  - `TrackedLegController` logs handedness, expected hand, visual root path, and first bound position/rotation/velocity controls.
+  - If left tracking still fails, check for `[TrackedLeg] Diagnostics LeftTrackedLeg ... positionControl='none'` in Console.
+- Added a guard for accidental same-component binding:
+  - If `_leftLeg == _rightLeg`, the rig clears and rebinds the right leg.
+- Replaced the cube-like default `Foot` visual with a small procedural low-poly boot mesh:
+  - Narrow toe, wider heel/midfoot, low height profile.
+  - Physics remains a simple `BoxCollider`.
+  - Left/right boot colors and the strike stripe remain visible for debugging.
+
 ### Planned Next Changes
 
 - Diagnose left-foot invisibility before changing the model:
