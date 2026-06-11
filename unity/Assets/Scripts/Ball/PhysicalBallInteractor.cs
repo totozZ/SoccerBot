@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace SoccerBot
@@ -7,6 +8,8 @@ namespace SoccerBot
     [RequireComponent(typeof(BallController))]
     public class PhysicalBallInteractor : MonoBehaviour
     {
+        public event Action<FootContactData, Vector3, float> PhysicalImpulseApplied;
+
         [Header("References")]
         [SerializeField] private BallController _ball;
         [SerializeField] private Rigidbody _ballBody;
@@ -27,6 +30,14 @@ namespace SoccerBot
         [SerializeField] private bool _debugImpulses = true;
 
         private float _lastImpulseTime = -999f;
+
+        public void ConfigureRouting(bool routeToMatchFlow, bool applyImpulseOutsideMatchFlow, bool debugImpulses)
+        {
+            _routeToMatchFlow = routeToMatchFlow;
+            _applyImpulseOutsideMatchFlow = applyImpulseOutsideMatchFlow;
+            _debugImpulses = debugImpulses;
+            ResolveReferences();
+        }
 
         private void Awake()
         {
@@ -109,6 +120,8 @@ namespace SoccerBot
 
             if (_debugImpulses)
                 Debug.Log($"[PhysicalBall] {data.Foot} impulse={impulse:0.00} dir={direction} speed={data.ContactSpeed:0.00}");
+
+            PhysicalImpulseApplied?.Invoke(data, direction, impulse);
         }
     }
 }

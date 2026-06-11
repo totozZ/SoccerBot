@@ -13,6 +13,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Unity.XR.CoreUtils;
 using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.XR;
 #if UNITY_EDITOR
@@ -94,6 +95,8 @@ namespace SoccerBot
 
                 canvas.renderMode = RenderMode.WorldSpace;
                 canvas.worldCamera = renderCam;
+                if (canvas.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+                    canvas.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
 
                 // The intro/title card gets its own (larger, closer) treatment so it
                 // fills more of the view than the in-match HUD.

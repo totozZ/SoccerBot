@@ -306,7 +306,7 @@ namespace SoccerBot
             {
                 footBox.center = _footColliderCenter;
                 footBox.size = _footColliderSize;
-                footBox.isTrigger = !_interactionEnabled;
+                footBox.isTrigger = true;
             }
 
             if (_shinCollider == null)
@@ -330,7 +330,7 @@ namespace SoccerBot
             _shinCollider.radius = _shinColliderRadius;
             _shinCollider.height = _shinColliderHeight;
             _shinCollider.direction = 1;
-            _shinCollider.isTrigger = !_interactionEnabled;
+            _shinCollider.isTrigger = true;
         }
 
         private void EnsureDefaultVisual()
@@ -694,15 +694,17 @@ namespace SoccerBot
                 return false;
             if (_footBody != null && other.attachedRigidbody == _footBody)
                 return false;
-            return true;
+            if (other.GetComponentInParent<BallController>() != null)
+                return true;
+            return other.attachedRigidbody != null && other.attachedRigidbody.GetComponent<BallController>() != null;
         }
 
         private void ApplyColliderInteractionMode()
         {
             if (_footCollider != null)
-                _footCollider.isTrigger = !_interactionEnabled;
+                _footCollider.isTrigger = true;
             if (_shinCollider != null)
-                _shinCollider.isTrigger = !_interactionEnabled;
+                _shinCollider.isTrigger = true;
         }
 
         private void SetTrackingObjectsActive(bool active)

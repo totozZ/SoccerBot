@@ -31,6 +31,14 @@ namespace SoccerBot
         [SerializeField] private float _lookSensitivity = 1.5f;
         [SerializeField] private float _minPitch = -70f;
         [SerializeField] private float _maxPitch = 70f;
+        [SerializeField] private float _stickLookYawSpeed = 95f;
+        [SerializeField, Range(0f, 0.5f)] private float _stickLookDeadzone = 0.18f;
+
+        [Header("Field Limits")]
+        [SerializeField] private bool _constrainToField = true;
+        [SerializeField] private Vector2 _fallbackFieldHalfExtents = new Vector2(5.8f, 8.8f);
+        [SerializeField] private float _fieldBoundaryPadding = 0.35f;
+        [SerializeField] private FieldBuilder _fieldBuilder;
 
         [Header("Charge")]
         [Tooltip("Seconds of holding LMB to reach full power (1.0).")]
@@ -88,6 +96,7 @@ namespace SoccerBot
         private InputAction _rightHandVelocityAction;
         private InputAction _receiveAction;
         private InputAction _moveAction;   // Quest left thumbstick (Vector2)
+        private InputAction _lookAction;   // Quest right thumbstick / gamepad right stick (Vector2)
 
         void OnEnable()
         {
@@ -121,6 +130,11 @@ namespace SoccerBot
             _moveAction = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
             _moveAction.AddBinding("<XRController>{LeftHand}/thumbstick");
             _moveAction.Enable();
+
+            _lookAction = new InputAction("Look", InputActionType.Value, expectedControlType: "Vector2");
+            _lookAction.AddBinding("<XRController>{RightHand}/thumbstick");
+            _lookAction.AddBinding("<Gamepad>/rightStick");
+            _lookAction.Enable();
         }
 
         void OnDisable()
@@ -161,6 +175,12 @@ namespace SoccerBot
                 _moveAction.Dispose();
                 _moveAction = null;
             }
+            if (_lookAction != null)
+            {
+                _lookAction.Disable();
+                _lookAction.Dispose();
+                _lookAction = null;
+            }
         }
 
         void Start()
@@ -195,6 +215,7 @@ namespace SoccerBot
             }
 
             EnsureFirstPersonLegs();
+            ResolveFieldBuilder();
         }
 
         private void EnsureFirstPersonLegs()
@@ -208,7 +229,12 @@ namespace SoccerBot
             var rig = GetComponent<QuestControllerLegRig>();
             if (rig == null)
                 rig = gameObject.AddComponent<QuestControllerLegRig>();
-            rig.EnsureRig();
+
+            BallController ball = FindFirstObjectByType<BallController>(FindObjectsInactive.Include);
+            if (ball != null)
+                rig.SetFootBallInteraction(true, true, 1 << ball.gameObject.layer);
+            else
+                rig.SetFootBallInteraction(true, true);
         }
 
         void Update()
@@ -233,8 +259,15 @@ namespace SoccerBot
                 Vector2 delta = mouse.delta.ReadValue();
                 _yaw   += delta.x * _lookSensitivity * 0.1f;
                 _pitch -= delta.y * _lookSensitivity * 0.1f;
-                _pitch  = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
             }
+
+            Vector2 stickLook = _lookAction != null ? _lookAction.ReadValue<Vector2>() : Vector2.zero;
+            if (Mathf.Abs(stickLook.x) > _stickLookDeadzone)
+            {
+                _yaw += stickLook.x * _stickLookYawSpeed * Time.deltaTime;
+            }
+
+            _pitch = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
 
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (_cameraAnchor != null)
@@ -269,6 +302,44 @@ namespace SoccerBot
             Vector3 right = dirRef.right; right.y = 0f; right.Normalize();
             Vector3 move = (right * x + fwd * z).normalized * _moveSpeed * Time.deltaTime;
             transform.position += move;
+            ClampToFieldBounds();
+        }
+
+        private void ResolveFieldBuilder()
+        {
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+        }
+
+        private void ClampToFieldBounds()
+        {
+            if (!_constrainToField)
+                return;
+
+            if (_fieldBuilder == null)
+                ResolveFieldBuilder();
+
+            Transform boundsRoot = _fieldBuilder != null ? _fieldBuilder.transform : null;
+            Vector2 halfExtents = _fieldBuilder != null
+                ? new Vector2(_fieldBuilder._halfWidth, _fieldBuilder._halfLength)
+                : _fallbackFieldHalfExtents;
+            halfExtents.x = Mathf.Max(0.5f, halfExtents.x - _fieldBoundaryPadding);
+            halfExtents.y = Mathf.Max(0.5f, halfExtents.y - _fieldBoundaryPadding);
+
+            if (boundsRoot != null)
+            {
+                Vector3 local = boundsRoot.InverseTransformPoint(transform.position);
+                local.x = Mathf.Clamp(local.x, -halfExtents.x, halfExtents.x);
+                local.z = Mathf.Clamp(local.z, -halfExtents.y, halfExtents.y);
+                Vector3 clampedWorld = boundsRoot.TransformPoint(local);
+                transform.position = new Vector3(clampedWorld.x, transform.position.y, clampedWorld.z);
+                return;
+            }
+
+            Vector3 pos = transform.position;
+            pos.x = Mathf.Clamp(pos.x, -halfExtents.x, halfExtents.x);
+            pos.z = Mathf.Clamp(pos.z, -halfExtents.y, halfExtents.y);
+            transform.position = pos;
         }
 
         // ── Charge & Shoot ───────────────────────────────────

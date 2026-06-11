@@ -1,7 +1,12 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.InputSystem.XR;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
@@ -42,10 +47,15 @@ namespace SoccerBot
 
         [Header("Quest Fallback Controls")]
         [SerializeField] private bool _enableQuestButtonFallback = true;
+        [SerializeField] private bool _enableMouseClickFallback = true;
+        [SerializeField] private bool _debugInputFallback = false;
 
         private bool _isBuilt;
-        private InputAction _questPrimaryAction;
-        private InputAction _questSecondaryAction;
+        private InputAction _fallbackSubmitAction;
+        private InputAction _fallbackSecondaryAction;
+        private InputAction _fallbackClickAction;
+        private InputAction _fallbackPointAction;
+        private bool _fallbackDiagnosticsLogged;
 
         void Awake()
         {
@@ -65,46 +75,137 @@ namespace SoccerBot
 
         void Update()
         {
-            if (!_enableQuestButtonFallback) return;
-            if (_questPrimaryAction == null || _questSecondaryAction == null) return;
+            HandleFallbackInput();
+        }
 
-            bool primaryPressed = _questPrimaryAction.WasPressedThisFrame();
-            bool secondaryPressed = _questSecondaryAction.WasPressedThisFrame();
-            if (!primaryPressed && !secondaryPressed) return;
+        void OnDestroy()
+        {
+            DisposeAction(ref _fallbackSubmitAction);
+            DisposeAction(ref _fallbackSecondaryAction);
+            DisposeAction(ref _fallbackClickAction);
+            DisposeAction(ref _fallbackPointAction);
+        }
 
+        private void HandleFallbackInput()
+        {
             bool trainingVisible = _trainingCanvasGroup != null && _trainingCanvasGroup.gameObject.activeInHierarchy;
-            bool menuVisible = _canvasGroup != null && _canvasGroup.alpha > 0.99f && _canvasGroup.interactable;
+            bool menuVisible = IsMenuVisibleForFallback();
+            bool submitPressed = WasSubmitPressed();
+            bool secondaryPressed = WasSecondaryPressed();
+            bool clickPressed = WasMouseClickPressed();
+
+            if (!_fallbackDiagnosticsLogged && (submitPressed || secondaryPressed || clickPressed))
+            {
+                _fallbackDiagnosticsLogged = true;
+                Debug.Log($"[MainMenu] Input fallback saw input. active={gameObject.activeInHierarchy} menuVisible={menuVisible} trainingVisible={trainingVisible} alpha={(_canvasGroup != null ? _canvasGroup.alpha : -1f):0.00} interactable={(_canvasGroup != null && _canvasGroup.interactable)}");
+            }
+
+            if (_enableMouseClickFallback && clickPressed)
+            {
+                Vector2 screenPosition = Mouse.current != null
+                    ? Mouse.current.position.ReadValue()
+                    : (_fallbackPointAction != null ? _fallbackPointAction.ReadValue<Vector2>() : Vector2.zero);
+                if (TryClickAt(screenPosition, trainingVisible, menuVisible))
+                    return;
+            }
+
+            if (!_enableQuestButtonFallback)
+                return;
+            if (_fallbackSubmitAction == null || _fallbackSecondaryAction == null)
+                return;
+
+            if (!submitPressed && !secondaryPressed)
+                return;
 
             if (trainingVisible)
             {
+                if (_debugInputFallback)
+                    Debug.Log("[MainMenu] Fallback input: training back.");
                 OnTrainingBackClicked();
                 return;
             }
 
             if (menuVisible)
             {
-                if (primaryPressed)
+                if (submitPressed)
                 {
+                    if (_debugInputFallback)
+                        Debug.Log("[MainMenu] Fallback input: start.");
                     OnStartClicked();
                     return;
                 }
 
                 if (secondaryPressed)
                 {
+                    if (_debugInputFallback)
+                        Debug.Log("[MainMenu] Fallback input: training.");
                     OnTrainingClicked();
                 }
             }
         }
 
-        void OnDestroy()
+        private bool IsMenuVisibleForFallback()
         {
-            _questPrimaryAction?.Disable();
-            _questPrimaryAction?.Dispose();
-            _questPrimaryAction = null;
+            if (!gameObject.activeInHierarchy)
+                return false;
+            if (_trainingCanvasGroup != null && _trainingCanvasGroup.gameObject.activeInHierarchy)
+                return false;
+            if (_startButton != null && _startButton.gameObject.activeInHierarchy)
+                return true;
+            if (_canvasGroup == null)
+                return true;
+            return _canvasGroup.alpha > 0.01f;
+        }
 
-            _questSecondaryAction?.Disable();
-            _questSecondaryAction?.Dispose();
-            _questSecondaryAction = null;
+        private bool WasSubmitPressed()
+        {
+            bool direct =
+                (Keyboard.current != null &&
+                 (Keyboard.current.enterKey.wasPressedThisFrame ||
+                  Keyboard.current.numpadEnterKey.wasPressedThisFrame ||
+                  Keyboard.current.spaceKey.wasPressedThisFrame)) ||
+                (Gamepad.current != null &&
+                 (Gamepad.current.buttonSouth.wasPressedThisFrame ||
+                  Gamepad.current.rightTrigger.wasPressedThisFrame)) ||
+                WasAnyXRButtonPressed("primaryButton", "triggerPressed", "gripPressed");
+
+            return direct || (_fallbackSubmitAction != null && _fallbackSubmitAction.WasPressedThisFrame());
+        }
+
+        private bool WasSecondaryPressed()
+        {
+            bool direct =
+                (Keyboard.current != null &&
+                 (Keyboard.current.tKey.wasPressedThisFrame ||
+                  Keyboard.current.escapeKey.wasPressedThisFrame)) ||
+                (Gamepad.current != null && Gamepad.current.buttonEast.wasPressedThisFrame) ||
+                WasAnyXRButtonPressed("secondaryButton", "menuButton");
+
+            return direct || (_fallbackSecondaryAction != null && _fallbackSecondaryAction.WasPressedThisFrame());
+        }
+
+        private bool WasMouseClickPressed()
+        {
+            return (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) ||
+                   (_fallbackClickAction != null && _fallbackClickAction.WasPressedThisFrame());
+        }
+
+        private static bool WasAnyXRButtonPressed(params string[] controlNames)
+        {
+            foreach (InputDevice device in InputSystem.devices)
+            {
+                if (device is not XRController && !device.layout.Contains("XR"))
+                    continue;
+
+                for (int i = 0; i < controlNames.Length; i++)
+                {
+                    ButtonControl button = device.TryGetChildControl<ButtonControl>(controlNames[i]);
+                    if (button != null && button.wasPressedThisFrame)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         private void AutoResolveRefs()
@@ -156,6 +257,9 @@ namespace SoccerBot
 
             if (GetComponent<GraphicRaycaster>() == null)
                 gameObject.AddComponent<GraphicRaycaster>();
+            if (GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+                gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
+            EnsureEventSystem();
 
             var background = gameObject.GetComponent<Image>();
             if (background == null) background = gameObject.AddComponent<Image>();
@@ -195,18 +299,132 @@ namespace SoccerBot
 
         private void SetupQuestFallbackControls()
         {
-            if (!_enableQuestButtonFallback) return;
-            if (_questPrimaryAction != null || _questSecondaryAction != null) return;
+            if (_fallbackSubmitAction != null || _fallbackSecondaryAction != null)
+                return;
 
-            _questPrimaryAction = new InputAction("QuestPrimary", InputActionType.Button);
-            _questPrimaryAction.AddBinding("<XRController>{RightHand}/primaryButton");
-            _questPrimaryAction.AddBinding("<XRController>{LeftHand}/primaryButton");
-            _questPrimaryAction.Enable();
+            _fallbackSubmitAction = new InputAction("MenuFallbackSubmit", InputActionType.Button);
+            _fallbackSubmitAction.AddBinding("<Keyboard>/enter");
+            _fallbackSubmitAction.AddBinding("<Keyboard>/space");
+            _fallbackSubmitAction.AddBinding("<Gamepad>/buttonSouth");
+            _fallbackSubmitAction.AddBinding("<XRController>{RightHand}/primaryButton");
+            _fallbackSubmitAction.AddBinding("<XRController>{LeftHand}/primaryButton");
+            _fallbackSubmitAction.AddBinding("<XRController>{RightHand}/triggerPressed");
+            _fallbackSubmitAction.AddBinding("<XRController>{RightHand}/triggerButton");
+            _fallbackSubmitAction.AddBinding("<XRController>{LeftHand}/triggerPressed");
+            _fallbackSubmitAction.AddBinding("<XRController>{LeftHand}/triggerButton");
+            _fallbackSubmitAction.Enable();
 
-            _questSecondaryAction = new InputAction("QuestSecondary", InputActionType.Button);
-            _questSecondaryAction.AddBinding("<XRController>{RightHand}/secondaryButton");
-            _questSecondaryAction.AddBinding("<XRController>{LeftHand}/secondaryButton");
-            _questSecondaryAction.Enable();
+            _fallbackSecondaryAction = new InputAction("MenuFallbackSecondary", InputActionType.Button);
+            _fallbackSecondaryAction.AddBinding("<Keyboard>/t");
+            _fallbackSecondaryAction.AddBinding("<Keyboard>/escape");
+            _fallbackSecondaryAction.AddBinding("<Gamepad>/buttonEast");
+            _fallbackSecondaryAction.AddBinding("<XRController>{RightHand}/secondaryButton");
+            _fallbackSecondaryAction.AddBinding("<XRController>{LeftHand}/secondaryButton");
+            _fallbackSecondaryAction.Enable();
+
+            _fallbackClickAction = new InputAction("MenuFallbackClick", InputActionType.Button);
+            _fallbackClickAction.AddBinding("<Mouse>/leftButton");
+            _fallbackClickAction.Enable();
+
+            _fallbackPointAction = new InputAction("MenuFallbackPoint", InputActionType.Value, expectedControlType: "Vector2");
+            _fallbackPointAction.AddBinding("<Mouse>/position");
+            _fallbackPointAction.Enable();
+        }
+
+        private static void EnsureEventSystem()
+        {
+            EventSystem eventSystem = EventSystem.current;
+            if (eventSystem == null)
+            {
+                var eventSystemGo = new GameObject("EventSystem", typeof(EventSystem));
+                eventSystem = eventSystemGo.GetComponent<EventSystem>();
+            }
+
+            var inputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
+            if (inputModule == null)
+                inputModule = eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+            if (inputModule.actionsAsset == null)
+                inputModule.AssignDefaultActions();
+        }
+
+        private bool TryClickAt(Vector2 screenPosition, bool trainingVisible, bool menuVisible)
+        {
+            if (trainingVisible && HitButton(_trainingBackButton, screenPosition))
+            {
+                if (_debugInputFallback)
+                    Debug.Log("[MainMenu] Mouse fallback: training back.");
+                OnTrainingBackClicked();
+                return true;
+            }
+
+            if (!menuVisible)
+                return false;
+
+            if (HitButton(_startButton, screenPosition))
+            {
+                if (_debugInputFallback)
+                    Debug.Log("[MainMenu] Mouse fallback: start.");
+                OnStartClicked();
+                return true;
+            }
+
+            if (HitButton(_trainingButton, screenPosition))
+            {
+                if (_debugInputFallback)
+                    Debug.Log("[MainMenu] Mouse fallback: training.");
+                OnTrainingClicked();
+                return true;
+            }
+
+            if (HitButton(_exitButton, screenPosition))
+            {
+                if (_debugInputFallback)
+                    Debug.Log("[MainMenu] Mouse fallback: exit.");
+                OnExitClicked();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool HitButton(Button button, Vector2 screenPosition)
+        {
+            if (button == null || !button.isActiveAndEnabled || !button.interactable)
+                return false;
+
+            var rect = button.transform as RectTransform;
+            if (rect == null)
+                return false;
+
+            Canvas canvas = button.GetComponentInParent<Canvas>();
+            Camera eventCamera = null;
+            if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                eventCamera = canvas.worldCamera != null ? canvas.worldCamera : ResolveUiEventCamera();
+
+            return RectTransformUtility.RectangleContainsScreenPoint(rect, screenPosition, eventCamera);
+        }
+
+        private static Camera ResolveUiEventCamera()
+        {
+            var player = GameObject.Find("Player");
+            if (player != null)
+            {
+                Transform fpsCamera = player.transform.Find("FpsAnchor/FpsCamera");
+                if (fpsCamera != null && fpsCamera.TryGetComponent(out Camera camera))
+                    return camera;
+            }
+
+            return Camera.main;
+        }
+
+        private static void DisposeAction(ref InputAction action)
+        {
+            if (action == null)
+                return;
+
+            action.Disable();
+            action.Dispose();
+            action = null;
         }
 
         private void BindButton(Button button, UnityEngine.Events.UnityAction action)

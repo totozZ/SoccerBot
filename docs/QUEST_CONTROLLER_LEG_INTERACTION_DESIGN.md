@@ -306,16 +306,18 @@ A: 完全物理化
 
 ### Current Known Issues
 
-1. Left foot is not visible in the current Play/Quest Link test.
-   - In Scene view, using Shift+F on left and right foot appears to frame nearly the same object or same-looking object.
-   - Next session should first diagnose whether `LeftTrackedLeg` and `RightTrackedLeg` are truly distinct GameObjects with distinct handedness, input bindings, visual roots, and positions.
-   - Check that `FindExistingLeg(handedness)` does not accidentally bind both references to the same `TrackedLegController`.
-   - Check whether left controller input actions have valid controls and whether `_hasTracking` becomes false for the left leg, which would hide its visual/colliders.
-2. Default foot visual is still a cube-like placeholder.
-   - It currently reads visually like a brick, even after scale reduction.
-   - Next visual pass should replace the cube foot with a small football-boot-like shape: compact, tapered, water-drop/teardrop silhouette, slightly wider at heel/midfoot and narrower at toe.
-   - Keep it procedural/simple for now unless importing a real boot mesh is explicitly chosen.
-   - Preserve clear left/right color distinction until the tracking issue is fixed.
+1. Foot placement and tracking now look acceptable in Quest Link testing.
+   - Both `LeftTrackedLeg` and `RightTrackedLeg` are visible.
+   - The likely stale-right-hand input-action issue was fixed by recreating input actions when handedness changes.
+   - Keep the one-shot diagnostics in place until the next APK validation confirms left/right controls on device.
+2. Default foot visual has moved past the cube placeholder.
+   - `Foot` now uses a simple procedural low-poly boot mesh.
+   - Physics remains a simple `BoxCollider`.
+   - Further model work should wait until the physical interaction loop is validated.
+3. Scene/physics migration decision is still open.
+   - Existing interfaces are enough for incremental integration: `FootContactData`, `TrackedLegController.GlobalFootContact`, `PhysicalBallInteractor`, `BallController.SetPhysicalSimulation(...)`, and `MatchFlowController.HandleFootBallContact(...)`.
+   - Risk is architectural concentration in `MatchFlowController`, not missing low-level plumbing.
+   - Recommended next step is a contained physical-interaction mode or test scene that reuses the current player, tracked legs, ball, and match-flow hooks, then merges the proven behavior into `Main.unity`.
 
 ### Latest Fix Notes
 
@@ -334,21 +336,57 @@ A: 完全物理化
   - Physics remains a simple `BoxCollider`.
   - Left/right boot colors and the strike stripe remain visible for debugging.
 
+### PhysicalTouchTest Notes
+
+- Added `unity/Assets/Scripts/Ball/PhysicalTouchTest.cs` as the next validation step before a tuning UI.
+- Recommended use:
+  - Add `PhysicalTouchTest` to an empty scene object in `Main.unity`, or create a temporary `PhysicalTouchTest` GameObject.
+  - Keep `Enter On Start` enabled for a quick Quest Link run.
+  - Press `R` in Play Mode to reset the physical ball in front of the player.
+- Test mode behavior:
+  - Enables `QuestControllerLegRig` foot-ball interaction at runtime.
+  - Ensures the current `BallController` has `PhysicalBallInteractor`.
+  - Routes contacts away from `MatchFlowController` by default so every valid kick can produce a physical impulse.
+  - Narrows tracked-leg collision filtering to the ball's layer and puts the temporary test ground on `Ignore Raycast` to reduce contact noise.
+  - Shows a small debug overlay with latest contact speed, power, accuracy, impulse direction, and ball velocity.
+  - Logs `[PhysicalTouchTest]`, `[TrackedLeg]`, and `[PhysicalBall]` lines for console capture.
+- `PhysicalBallInteractor` now exposes:
+  - `ConfigureRouting(...)` for runtime test/tuning modes.
+  - `PhysicalImpulseApplied` so debug or tuning controllers can observe the actual impulse result.
+- `QuestControllerLegRig` now exposes:
+  - `SetFootBallInteraction(...)` so test/tuning components can enable collision interaction and apply a ball layer mask without editing private Inspector fields.
+
+### Latest Test Status
+
+- Main menu input is now usable enough to enter the game in Quest Link / Unity Play Mode.
+- Right stick is bound to horizontal yaw rotation only; vertical look remains driven by mouse/head orientation paths.
+- Player movement is clamped to the generated field bounds to avoid leaving the pitch during possession.
+- Foot-ball interaction is no longer completely blocked:
+  - `QuestControllerLegRig` enables foot-ball interaction by default.
+  - `TrackedLegController` uses trigger contact against objects with `BallController`.
+  - `PhysicalBallInteractor` can receive those contacts and apply impulse or route them into `MatchFlowController`.
+- Current blocker:
+  - Foot-ball contact is still unreliable. The ball is often not received or not kicked even when the visible boot appears to touch it.
+  - Likely cause is model / collider mismatch: the procedural boot visual, controller-driven pose offset, and simple foot `BoxCollider` do not line up well enough with the visible foot and ball.
+  - This should be treated as a collider tuning / debug-visualization problem, not as a high-level MatchFlow problem yet.
+- Recommended next debugging pass:
+  - Draw foot `BoxCollider` and shin `CapsuleCollider` in Play Mode with distinct colors.
+  - Log/contact-draw both `ClosestPoint` and contact ray when a ball trigger happens.
+  - Tune `Foot Collider Center`, `Foot Size`, and pose offsets from `QuestControllerLegRig`, not from generated leg transforms.
+  - Consider replacing the single foot box with 2-3 trigger zones: sole, toe, and instep.
+  - Keep `PhysicalTouchTest` as the main test path until contact reliability is acceptable.
+
 ### Planned Next Changes
 
-- Diagnose left-foot invisibility before changing the model:
-  - Log or inspect left/right `TrackedLegController.Handedness`.
-  - Confirm `_leftLeg != _rightLeg`.
-  - Confirm generated hierarchy contains separate `LeftTrackedLeg/TrackedLegVisual/Foot` and `RightTrackedLeg/TrackedLegVisual/Foot`.
-  - Confirm left controller input bindings are live in Quest Link and APK paths.
-- Improve foot mesh shape after left/right tracking is reliable:
-  - Replace the current cube `Foot` primitive with a low-poly procedural boot mesh or a small set of scaled primitives.
-  - Suggested procedural mesh points:
-    - Longer local Z axis for shoe length.
-    - Narrower toe than midfoot.
-    - Slightly rounded/tapered toe cap.
-    - Low height profile, not a block.
-  - Keep collider simple (`BoxCollider`) for now; visual mesh can be prettier than the physics shape.
+- Validate on APK that left/right controller bindings remain distinct.
+- Run `PhysicalTouchTest` through Quest Link and APK:
+  - Confirm fast swings do not miss contact.
+  - Confirm the ball resets reliably and does not fight scripted `MatchFlow` control.
+  - Capture useful ranges for foot speed, `power01`, `accuracy01`, impulse, lift, and cooldown.
+- After that validation, add `FootBallTuningController`:
+  - Runtime sliders/shortcuts for impulse, lift, speed thresholds, collider size, and reset offset.
+  - Optional handoff back into `MatchFlowController` once the physical touch loop is stable.
+- After contact tuning, decide whether to replace the scripted pass/shot arcs inside `Main.unity` or keep them as authored presentation around physical touch points.
 
 ### Runtime Components
 

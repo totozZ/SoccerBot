@@ -11,8 +11,8 @@ namespace SoccerBot
         [SerializeField] private bool _createOnStart = true;
         [SerializeField] private bool _liveUpdateInPlayMode = true;
         [SerializeField] private bool _buildDefaultVisuals = true;
-        [SerializeField] private bool _enableFootBallInteraction = false;
-        [SerializeField] private bool _ensurePhysicalBallInteractor = false;
+        [SerializeField] private bool _enableFootBallInteraction = true;
+        [SerializeField] private bool _ensurePhysicalBallInteractor = true;
 
         [Header("Tracking Space")]
         [SerializeField] private Transform _trackingSpaceRoot;
@@ -46,6 +46,20 @@ namespace SoccerBot
 
         private bool _settingsDirty;
         private bool _loggedRigDiagnostics;
+
+        public void SetFootBallInteraction(bool enabled, bool ensurePhysicalBallInteractor)
+        {
+            _enableFootBallInteraction = enabled;
+            _ensurePhysicalBallInteractor = ensurePhysicalBallInteractor;
+            EnsureRig();
+            ApplySettingsToExistingLegs();
+        }
+
+        public void SetFootBallInteraction(bool enabled, bool ensurePhysicalBallInteractor, LayerMask ballLayer)
+        {
+            _ballLayer = ballLayer;
+            SetFootBallInteraction(enabled, ensurePhysicalBallInteractor);
+        }
 
         private void Start()
         {
