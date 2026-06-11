@@ -49,6 +49,7 @@ namespace SoccerBot
 
         [Header("Aim Feedback (optional)")]
         [SerializeField] private float _chargeRecoilOffset = 0.08f;
+        [SerializeField] private bool _showFirstPersonLegs = true;
 
         public event Action<float> OnChargeChanged;          // 0..1 each frame while charging
         public event Action<float, Vector3> OnShoot;          // (power01, worldDirection)
@@ -191,6 +192,17 @@ namespace SoccerBot
                 _yaw   = transform.eulerAngles.y;
                 _pitch = 0f;
             }
+
+            EnsureFirstPersonLegs();
+        }
+
+        private void EnsureFirstPersonLegs()
+        {
+            if (!_showFirstPersonLegs) return;
+            if (GetComponent<FirstPersonLegAvatar>() != null) return;
+
+            var legs = gameObject.AddComponent<FirstPersonLegAvatar>();
+            legs.Configure(this, _fpsCamera);
         }
 
         void Update()
