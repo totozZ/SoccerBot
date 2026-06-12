@@ -88,9 +88,14 @@ namespace SoccerBot
 
         public void Show(Scenario s)
         {
+            Show(s, null, null, null);
+        }
+
+        public void Show(Scenario s, string outcomeLabelOverride, string scoreTextOverride = null, string flavorTextOverride = null)
+        {
             if (s == null) return;
             StopAllCoroutines();
-            StartCoroutine(ShowRoutine(s));
+            StartCoroutine(ShowRoutine(s, outcomeLabelOverride, scoreTextOverride, flavorTextOverride));
         }
 
         public void SetFirstTouchContext(float quality01, float receiveBias)
@@ -110,12 +115,12 @@ namespace SoccerBot
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
         }
 
-        private IEnumerator ShowRoutine(Scenario s)
+        private IEnumerator ShowRoutine(Scenario s, string outcomeLabelOverride, string scoreTextOverride, string flavorTextOverride)
         {
             SetText(_scenarioNameText, s.scenarioName);
-            SetText(_scoreText, GetRandomScoreText(s.finalScore));
-            SetText(_outcomeText, OutcomeLabel(s.outcome));
-            SetText(_flavorText, ComposeFlavor(s.flavorText));
+            SetText(_scoreText, string.IsNullOrWhiteSpace(scoreTextOverride) ? GetRandomScoreText(s.finalScore) : scoreTextOverride);
+            SetText(_outcomeText, string.IsNullOrWhiteSpace(outcomeLabelOverride) ? OutcomeLabel(s.outcome) : outcomeLabelOverride);
+            SetText(_flavorText, ComposeFlavor(string.IsNullOrWhiteSpace(flavorTextOverride) ? s.flavorText : flavorTextOverride));
 
             var c = OutcomeColor(s.outcome);
             ApplyColor(_scenarioNameText, c);

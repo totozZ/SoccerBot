@@ -510,13 +510,13 @@ namespace SoccerBot
         [SerializeField] private Rect _windowRect = new Rect(18f, 176f, 420f, 540f);
 
         [Header("Leg Pose")]
-        [SerializeField] private Vector3 _leftPoseOffset = new Vector3(0f, -0.15f, 0.1f);
-        [SerializeField] private Vector3 _rightPoseOffset = new Vector3(0f, -0.15f, 0.1f);
+        [SerializeField] private Vector3 _leftPoseOffset = new Vector3(0f, -0.15f, 0.16f);
+        [SerializeField] private Vector3 _rightPoseOffset = new Vector3(0f, -0.15f, 0.16f);
         [SerializeField] private float _legScale = 0.5f;
 
         [Header("Foot Collider")]
-        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.15f);
-        [SerializeField] private Vector3 _footSize = new Vector3(0.2f, 0.11f, 0.48f);
+        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.18f);
+        [SerializeField] private Vector3 _footSize = new Vector3(0.2f, 0.11f, 0.58f);
 
         [Header("Shin Collider")]
         [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
@@ -530,11 +530,11 @@ namespace SoccerBot
 
         [Header("Impulse")]
         [SerializeField] private float _minImpulseSpeed = 0.3f;
-        [SerializeField] private float _minImpulse = 1.2f;
-        [SerializeField] private float _maxImpulse = 7.0f;
+        [SerializeField] private float _minImpulse = 0.9f;
+        [SerializeField] private float _maxImpulse = 5.2f;
         [SerializeField, Range(0f, 1f)] private float _swingDirectionWeight = 0.75f;
-        [SerializeField] private float _lift = 0.12f;
-        [SerializeField] private float _spinTorque = 0.08f;
+        [SerializeField] private float _lift = 0.09f;
+        [SerializeField] private float _spinTorque = 0.06f;
         [SerializeField] private float _impulseCooldown = 0.12f;
 
         private const int WindowId = 982731;

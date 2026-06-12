@@ -97,7 +97,7 @@ namespace SoccerBot
         [SerializeField] private Transform _trackingSpaceRoot;
         [SerializeField] private Transform _renderCamera;
         [SerializeField] private bool _useRenderCameraRelativePose = true;
-        [SerializeField] private Vector3 _poseOffsetPosition = new Vector3(0f, -0.15f, 0.1f);
+        [SerializeField] private Vector3 _poseOffsetPosition = new Vector3(0f, -0.15f, 0.16f);
         [SerializeField] private Vector3 _poseOffsetEuler = Vector3.zero;
 
         [Header("Body")]
@@ -105,8 +105,8 @@ namespace SoccerBot
         [SerializeField] private Rigidbody _footBody;
         [SerializeField] private Collider _footCollider;
         [SerializeField] private CapsuleCollider _shinCollider;
-        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.15f);
-        [SerializeField] private Vector3 _footColliderSize = new Vector3(0.2f, 0.11f, 0.48f);
+        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.18f);
+        [SerializeField] private Vector3 _footColliderSize = new Vector3(0.2f, 0.11f, 0.58f);
         [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
         [SerializeField] private float _shinColliderRadius = 0.055f;
         [SerializeField] private float _shinColliderHeight = 0.5f;

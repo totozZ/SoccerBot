@@ -31,7 +31,7 @@ namespace SoccerBot
         [SerializeField] private float _lookSensitivity = 1.5f;
         [SerializeField] private float _minPitch = -70f;
         [SerializeField] private float _maxPitch = 70f;
-        [SerializeField] private float _stickLookYawSpeed = 95f;
+        [SerializeField] private float _stickLookYawSpeed = 190f;
         [SerializeField, Range(0f, 0.5f)] private float _stickLookDeadzone = 0.18f;
 
         [Header("Field Limits")]

@@ -62,6 +62,11 @@ namespace SoccerBot
         [SerializeField, Range(0f, 1f)] private float _minimumFootShotPower = 0.12f;
         [SerializeField, Range(0f, 1f)] private float _footShotSwingDirectionWeight = 0.65f;
         [SerializeField, Range(0f, 0.5f)] private float _footShotLift = 0.08f;
+        [SerializeField] private bool _enableInstepShotAssist = true;
+        [SerializeField, Range(0f, 0.6f)] private float _instepShotAssistMax = 0.28f;
+        [SerializeField, Range(0f, 1f)] private float _instepShotAssistMinPower = 0.18f;
+        [SerializeField, Range(0f, 1f)] private float _instepShotAssistFullPower = 0.72f;
+        [SerializeField, Range(5f, 120f)] private float _instepShotAssistMaxAngle = 72f;
 
         [Header("Player Pass / Shot Resolution")]
         [SerializeField] private bool _enableTeammatePassByAim = true;
@@ -104,6 +109,7 @@ namespace SoccerBot
         [SerializeField] private float _opponentGoalWidth = 3.5f;
         [SerializeField] private float _opponentGoalHeight = 1.55f;
         [SerializeField] private float _opponentGoalDepth = 0.6f;
+        [SerializeField] private float _goalMouthBoundaryGapPadding = 0.35f;
 
         [Header("Teammate Shot Animation")]
         [SerializeField] private float _shotPassToTeammate = 0.6f;
@@ -157,6 +163,7 @@ namespace SoccerBot
         [SerializeField] private Scenario _shotMissedData;
 
         public Phase CurrentPhase { get; private set; } = Phase.Idle;
+        public enum BoundaryExitKind { Unknown, Sideline, GoalLine, Fall }
 
         private Coroutine _loop;
         private bool _isMatchRunning;
@@ -499,13 +506,48 @@ namespace SoccerBot
             _matchBoundaryRoot.SetActive(true);
             _matchBoundaryRoot.transform.SetPositionAndRotation(center, rotation);
 
-            EnsureMatchBoundaryWall("BackWall", new Vector3(0f, 0f, -length * 0.5f), new Vector3(width + thickness * 2f, height, thickness));
-            EnsureMatchBoundaryWall("FrontWall", new Vector3(0f, 0f, length * 0.5f), new Vector3(width + thickness * 2f, height, thickness));
-            EnsureMatchBoundaryWall("LeftWall", new Vector3(-width * 0.5f, 0f, 0f), new Vector3(thickness, height, length));
-            EnsureMatchBoundaryWall("RightWall", new Vector3(width * 0.5f, 0f, 0f), new Vector3(thickness, height, length));
+            DisableLegacyBoundaryWall("BackWall");
+            DisableLegacyBoundaryWall("FrontWall");
+
+            EnsureGoalLineBoundaryWalls("BackWall", -length * 0.5f, width, height, thickness);
+            EnsureGoalLineBoundaryWalls("FrontWall", length * 0.5f, width, height, thickness);
+            EnsureMatchBoundaryWall("LeftWall", new Vector3(-width * 0.5f, 0f, 0f), new Vector3(thickness, height, length), BoundaryExitKind.Sideline);
+            EnsureMatchBoundaryWall("RightWall", new Vector3(width * 0.5f, 0f, 0f), new Vector3(thickness, height, length), BoundaryExitKind.Sideline);
+            EnsureOpponentGoalTrigger(height);
         }
 
-        private void EnsureMatchBoundaryWall(string wallName, Vector3 localPosition, Vector3 localScale)
+        private void EnsureGoalLineBoundaryWalls(string prefix, float localZ, float width, float height, float thickness)
+        {
+            float gapWidth = Mathf.Clamp(
+                _opponentGoalWidth + _goalMouthBoundaryGapPadding * 2f,
+                0f,
+                Mathf.Max(0f, width - thickness * 4f));
+            float segmentWidth = Mathf.Max(0.02f, (width - gapWidth) * 0.5f);
+            float centerOffset = gapWidth * 0.5f + segmentWidth * 0.5f;
+
+            EnsureMatchBoundaryWall(
+                $"{prefix}Left",
+                new Vector3(-centerOffset, 0f, localZ),
+                new Vector3(segmentWidth, height, thickness),
+                BoundaryExitKind.GoalLine);
+            EnsureMatchBoundaryWall(
+                $"{prefix}Right",
+                new Vector3(centerOffset, 0f, localZ),
+                new Vector3(segmentWidth, height, thickness),
+                BoundaryExitKind.GoalLine);
+        }
+
+        private void DisableLegacyBoundaryWall(string wallName)
+        {
+            if (_matchBoundaryRoot == null)
+                return;
+
+            Transform wall = _matchBoundaryRoot.transform.Find(wallName);
+            if (wall != null)
+                wall.gameObject.SetActive(false);
+        }
+
+        private void EnsureMatchBoundaryWall(string wallName, Vector3 localPosition, Vector3 localScale, BoundaryExitKind exitKind)
         {
             Transform wall = _matchBoundaryRoot.transform.Find(wallName);
             if (wall == null)
@@ -518,7 +560,7 @@ namespace SoccerBot
                 var reporter = wallGo.GetComponent<MatchBoundaryWall>();
                 if (reporter == null)
                     reporter = wallGo.AddComponent<MatchBoundaryWall>();
-                reporter.Configure(this);
+                reporter.Configure(this, exitKind);
 
                 Renderer renderer = wallGo.GetComponent<Renderer>();
                 if (renderer != null)
@@ -534,7 +576,7 @@ namespace SoccerBot
                 var reporter = wall.GetComponent<MatchBoundaryWall>();
                 if (reporter == null)
                     reporter = wall.gameObject.AddComponent<MatchBoundaryWall>();
-                reporter.Configure(this);
+                reporter.Configure(this, exitKind);
             }
 
             if (wall == null)
@@ -550,6 +592,44 @@ namespace SoccerBot
             Renderer existingRenderer = wall.GetComponent<Renderer>();
             if (existingRenderer != null)
                 existingRenderer.enabled = _showMatchBoundaryWalls;
+        }
+
+        private void EnsureOpponentGoalTrigger(float boundaryHeight)
+        {
+            if (_matchBoundaryRoot == null)
+                return;
+
+            Transform trigger = _matchBoundaryRoot.transform.Find("OpponentGoalTrigger");
+            if (trigger == null)
+            {
+                GameObject triggerGo = new GameObject("OpponentGoalTrigger", typeof(BoxCollider), typeof(MatchGoalTrigger));
+                triggerGo.layer = 2;
+                triggerGo.transform.SetParent(_matchBoundaryRoot.transform, false);
+                trigger = triggerGo.transform;
+            }
+
+            float halfLength = GetFieldHalfLength();
+            float goalDepth = Mathf.Max(0.05f, _opponentGoalDepth);
+            float goalHeight = Mathf.Max(0.1f, _opponentGoalHeight);
+            float triggerDepth = goalDepth * 2f + _ballOutOfBoundsMargin;
+            float centerZ = halfLength + _ballOutOfBoundsMargin * 0.5f;
+            float centerY = (goalHeight - Mathf.Max(0.2f, boundaryHeight)) * 0.5f;
+
+            trigger.gameObject.SetActive(true);
+            trigger.localPosition = new Vector3(0f, centerY, centerZ);
+            trigger.localRotation = Quaternion.identity;
+            trigger.localScale = Vector3.one;
+
+            BoxCollider collider = trigger.GetComponent<BoxCollider>();
+            collider.isTrigger = true;
+            collider.center = Vector3.zero;
+            collider.size = new Vector3(
+                Mathf.Max(0.1f, _opponentGoalWidth),
+                goalHeight,
+                Mathf.Max(0.1f, triggerDepth));
+
+            MatchGoalTrigger reporter = trigger.GetComponent<MatchGoalTrigger>();
+            reporter.Configure(this);
         }
 
         private void EnsureDemoScenePolish()
@@ -1148,12 +1228,20 @@ namespace SoccerBot
             yield return new WaitForSeconds(_cooldownDuration);
         }
 
-        public void NotifyBoundaryHit(BallController ball)
+        public void NotifyBoundaryHit(BallController ball, BoundaryExitKind exitKind = BoundaryExitKind.Unknown)
         {
             if (ball == null || _ball == null || ball != _ball)
                 return;
 
-            ResolveBallOutOfPlay("[MatchFlow] Ball hit field boundary.");
+            ResolveBallOutOfPlay(exitKind, "[MatchFlow] Ball hit field boundary.");
+        }
+
+        public void NotifyOpponentGoal(BallController ball)
+        {
+            if (ball == null || _ball == null || ball != _ball)
+                return;
+
+            ResolveSelfGoal();
         }
 
         private void GuardGoalAndBoundary()
@@ -1182,8 +1270,8 @@ namespace SoccerBot
                 return;
             }
 
-            if (IsBallOutOfBounds())
-                ResolveBallOutOfPlay("[MatchFlow] Ball left field bounds.");
+            if (IsBallOutOfBounds(out BoundaryExitKind exitKind))
+                ResolveBallOutOfPlay(exitKind, "[MatchFlow] Ball left field bounds.");
         }
 
         private bool IsBallInOpponentGoal()
@@ -1204,8 +1292,9 @@ namespace SoccerBot
                 && local.y <= goalHeight;
         }
 
-        private bool IsBallOutOfBounds()
+        private bool IsBallOutOfBounds(out BoundaryExitKind exitKind)
         {
+            exitKind = BoundaryExitKind.Unknown;
             if (_ball == null)
                 return false;
 
@@ -1213,10 +1302,25 @@ namespace SoccerBot
             float halfWidth = GetFieldHalfWidth() + _ballOutOfBoundsMargin;
             float halfLength = GetFieldHalfLength() + _ballOutOfBoundsMargin;
 
-            return Mathf.Abs(local.x) > halfWidth
-                || local.z > halfLength
-                || local.z < -halfLength
-                || _ball.transform.position.y < _ballFallY;
+            if (_ball.transform.position.y < _ballFallY)
+            {
+                exitKind = BoundaryExitKind.Fall;
+                return true;
+            }
+
+            if (Mathf.Abs(local.x) > halfWidth)
+            {
+                exitKind = BoundaryExitKind.Sideline;
+                return true;
+            }
+
+            if (local.z > halfLength || local.z < -halfLength)
+            {
+                exitKind = BoundaryExitKind.GoalLine;
+                return true;
+            }
+
+            return false;
         }
 
         private Vector3 GetFieldLocalBallPosition()
@@ -1268,7 +1372,7 @@ namespace SoccerBot
             HandleShotResolved();
         }
 
-        private void ResolveBallOutOfPlay(string reason)
+        private void ResolveBallOutOfPlay(BoundaryExitKind exitKind, string reason)
         {
             if (!_isMatchRunning || _rallyResolved)
                 return;
@@ -1286,10 +1390,11 @@ namespace SoccerBot
             }
             if (_ball != null) _ball.SetPhysicalSimulation(false, true);
 
-            if (_scorePanel != null && _shotMissedData != null) _scorePanel.Show(_shotMissedData);
+            string label = exitKind == BoundaryExitKind.GoalLine ? "JUST MISSED" : "OUT OF BOUNDS";
+            if (_scorePanel != null && _shotMissedData != null) _scorePanel.Show(_shotMissedData, label);
             if (_scoreBoard != null) _scoreBoard.Record(ScenarioOutcome.Missed);
 
-            Debug.Log(reason);
+            Debug.Log($"{reason} kind={exitKind}");
             HandleShotResolved();
         }
 
@@ -1410,6 +1515,95 @@ namespace SoccerBot
             }
 
             return false;
+        }
+
+        public bool TryAssistPhysicalShotDirection(FootContactData data, Vector3 rawDirection, out Vector3 assistedDirection, out float assist01)
+        {
+            assistedDirection = rawDirection;
+            assist01 = 0f;
+
+            if (!_enableInstepShotAssist || !_isMatchRunning || _rallyResolved)
+                return false;
+            if (CurrentPhase != Phase.Possession || _ball == null)
+                return false;
+
+            Vector3 flatRaw = Flatten(rawDirection);
+            if (flatRaw.sqrMagnitude < 0.0001f)
+                return false;
+
+            Vector3 goalDirection = Flatten(GetOpponentGoalAimPoint() - _ball.transform.position);
+            if (goalDirection.sqrMagnitude < 0.0001f)
+                goalDirection = GetAttackForward();
+            goalDirection.Normalize();
+
+            float rawToGoalDot = Vector3.Dot(flatRaw.normalized, goalDirection);
+            float minDot = Mathf.Cos(_instepShotAssistMaxAngle * Mathf.Deg2Rad);
+            float angleScore = Mathf.InverseLerp(minDot, 1f, rawToGoalDot);
+            if (angleScore <= 0f)
+                return false;
+
+            float powerScore = Mathf.InverseLerp(_instepShotAssistMinPower, _instepShotAssistFullPower, data.Power01);
+            if (powerScore <= 0f)
+                return false;
+
+            float techniqueScore = EvaluateInstepShotTechnique(data, goalDirection);
+            if (techniqueScore <= 0f)
+                return false;
+
+            assist01 = Mathf.Clamp01(_instepShotAssistMax * angleScore * powerScore * techniqueScore);
+            if (assist01 <= 0f)
+                return false;
+
+            Vector3 flatAssisted = Vector3.Slerp(flatRaw.normalized, goalDirection, assist01);
+            assistedDirection = new Vector3(flatAssisted.x, rawDirection.y, flatAssisted.z);
+            if (assistedDirection.sqrMagnitude < 0.0001f)
+                assistedDirection = rawDirection;
+            assistedDirection.Normalize();
+            return true;
+        }
+
+        private float EvaluateInstepShotTechnique(FootContactData data, Vector3 goalDirection)
+        {
+            string zone = data.ContactZone ?? string.Empty;
+            float zoneScore = 0.2f;
+            if (zone.IndexOf("Instep", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScore = 1f;
+            else if (zone.IndexOf("Toe", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScore = 0.45f;
+            else if (zone.IndexOf("FootBox", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScore = 0.35f;
+            else if (zone.IndexOf("Sole", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     zone.IndexOf("Shin", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScore = 0.05f;
+
+            Vector3 face = Flatten(data.FootForward);
+            Vector3 swing = Flatten(data.SwingDirection);
+            if (face.sqrMagnitude < 0.0001f || swing.sqrMagnitude < 0.0001f)
+                return zoneScore;
+
+            face.Normalize();
+            swing.Normalize();
+            Vector3 right = GetAttackRight();
+            float diagonalFaceScore = Mathf.InverseLerp(0.22f, 0.68f, Mathf.Abs(Vector3.Dot(face, right)));
+            float swingGoalScore = Mathf.InverseLerp(0.05f, 0.72f, Vector3.Dot(swing, goalDirection));
+            float diagonalInstepScore = diagonalFaceScore * swingGoalScore;
+
+            return Mathf.Clamp01(Mathf.Max(zoneScore, diagonalInstepScore * 0.8f));
+        }
+
+        private Vector3 GetOpponentGoalAimPoint()
+        {
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+
+            float y = Mathf.Clamp(_opponentGoalHeight * 0.45f, 0.25f, 1.0f);
+            if (_fieldBuilder != null)
+                return _fieldBuilder.transform.TransformPoint(new Vector3(0f, y, GetFieldHalfLength() + _opponentGoalDepth * 0.25f));
+
+            if (_goalTargetIn != null)
+                return _goalTargetIn.position;
+
+            return _goalTargetInPos;
         }
 
         private void HandleReceiveAttempt(Vector3 direction)
@@ -2033,10 +2227,12 @@ namespace SoccerBot
     public class MatchBoundaryWall : MonoBehaviour
     {
         private MatchFlowController _owner;
+        private MatchFlowController.BoundaryExitKind _exitKind = MatchFlowController.BoundaryExitKind.Unknown;
 
-        public void Configure(MatchFlowController owner)
+        public void Configure(MatchFlowController owner, MatchFlowController.BoundaryExitKind exitKind)
         {
             _owner = owner;
+            _exitKind = exitKind;
         }
 
         private void OnCollisionEnter(Collision collision)
@@ -2052,7 +2248,29 @@ namespace SoccerBot
         private void Notify(BallController ball)
         {
             if (_owner != null && ball != null)
-                _owner.NotifyBoundaryHit(ball);
+                _owner.NotifyBoundaryHit(ball, _exitKind);
+        }
+    }
+
+    [DisallowMultipleComponent]
+    public class MatchGoalTrigger : MonoBehaviour
+    {
+        private MatchFlowController _owner;
+
+        public void Configure(MatchFlowController owner)
+        {
+            _owner = owner;
+        }
+
+        private void OnTriggerEnter(Collider other)
+        {
+            Notify(other != null ? other.GetComponentInParent<BallController>() : null);
+        }
+
+        private void Notify(BallController ball)
+        {
+            if (_owner != null && ball != null)
+                _owner.NotifyOpponentGoal(ball);
         }
     }
 }

@@ -264,7 +264,7 @@
 1. 是否两个手柄都要显示为腿，还是只把右手柄映射成主射门脚，左手柄暂时作为支撑脚？
 A: 两个都是腿比较符合直觉
 2. 手柄握在手里时，脚模型应该直接出现在手柄位置，还是需要一个“手柄到脚”的固定偏移，让玩家拿手柄模拟脚的位置？
-A: 直接出现在手柄位置比较符合直觉。Quest Link 实测后，当前手柄到脚的默认偏移量为 `(0, -0.15, 0.1)`，整体腿/脚显示缩放为 `0.5`。
+A: 直接出现在手柄位置比较符合直觉。Quest Link 实测后，当前手柄到脚的默认偏移量为 `(0, -0.15, 0.16)`，整体腿/脚显示缩放为 `0.5`。
 3. 射门阶段是否必须按住右扳机才允许触球，还是任何高速脚部碰撞都可触发？
 A: 任何高速脚部碰撞都可触发，右扳机只是作为射门意图 gating，不直接决定球飞出去。
 4. 球是否要完全物理化，还是先保持当前剧情球路，只在玩家交互窗口短暂物理化？
@@ -286,8 +286,8 @@ A: 完全物理化
   - `TrackedLegController.interactionEnabled = false`
   - With these defaults, foot visuals do not affect ball physics, receive/pass/shoot, or MatchFlow.
 - Current Quest Link calibration from headset testing:
-  - Left foot offset: `(0, -0.15, 0.1)`
-  - Right foot offset: `(0, -0.15, 0.1)`
+  - Left foot offset: `(0, -0.15, 0.16)`
+  - Right foot offset: `(0, -0.15, 0.16)`
   - `Leg Scale = 0.5`
   - `Live Update In Play Mode = true`
 - Runtime tuning should be done on `Player -> QuestControllerLegRig`, not directly on generated `LeftTrackedLeg` / `RightTrackedLeg` transforms. Generated leg transforms are continuously driven by tracking and will override manual Transform edits.
@@ -403,7 +403,7 @@ A: 完全物理化
 - `unity/Assets/Scripts/Player/TrackedLegController.cs`
   - 直接读取 `<XRController>{LeftHand|RightHand}/devicePosition`、`deviceRotation`、`deviceVelocity`、`deviceAngularVelocity`。
   - `Update` 缓存最新 tracking pose，`FixedUpdate` 使用 `Rigidbody.MovePosition` / `MoveRotation` 同步 kinematic 脚部刚体。
-  - 默认偏移为 `(0, -0.15, 0.1)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
+  - 默认偏移为 `(0, -0.15, 0.16)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
   - 自动创建简化可视模型：脚部 box、小腿 capsule、左右脚颜色区分。
   - 自动配置脚部 `Rigidbody`、`BoxCollider` 和小腿 `CapsuleCollider`，接触球时发送 `FootContactData`。
 
@@ -500,14 +500,11 @@ A: 完全物理化
   - Opponent goal is checked as a simple field-local box.
   - Boundary is checked by field extents and invisible cube walls.
   - If corner or post cases feel unfair, replace with explicit goal-mouth trigger colliders later.
-- Goal-mouth boundary conflict is a current bug.
-  - Around the goal area, the goal judgement volume and field boundary / wall protection can overlap in a bad way.
-  - The ball can sink or get caught near the goal-mouth edge instead of cleanly resolving as score or miss.
-  - This likely needs explicit goal-mouth trigger colliders plus a boundary gap / special-case around both goals.
-- Out-of-bounds result text needs different labels by side.
-  - Left and right sideline exits should show an English out-of-bounds label, e.g. `OUT OF BOUNDS`.
-  - Front/back goal-line exits should show `JUST MISSED` rather than the same generic boundary text.
-  - Goal-line misses and sideline exits should remain separate result types even if both end the round.
+- Goal-mouth boundary and out-of-bounds text have been addressed in code and still need Quest Link / APK verification.
+  - Front/back boundary walls now leave a goal-mouth gap.
+  - `OpponentGoalTrigger` handles direct shots through the opponent goal.
+  - Sideline exits show `OUT OF BOUNDS`; goal-line exits show `JUST MISSED`.
+  - Verify that the ball no longer sinks or catches near the goal-mouth edge.
 - Pass arrival has an intermittent ball reset bug.
   - Sometimes after a pass is caught / reaches the teammate area, the ball refreshes to the exact field center.
   - In that state the ball can appear half sunk into the pitch.
@@ -520,6 +517,75 @@ A: 完全物理化
 
 - `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
 - Remaining warnings are existing Unity obsolete API / serialized-field warnings and are not blocking this pass.
+
+## 2026-06-12 Goal-Mouth Boundary Pass
+
+### Implemented
+
+- `MatchFlowController` now leaves a physical gap in the generated front/back boundary walls around the goal mouth.
+- Added a runtime `OpponentGoalTrigger` so direct physical shots through the opponent goal mouth resolve as score without fighting the boundary wall.
+- Boundary hits are now classified as `Sideline`, `GoalLine`, or `Fall`.
+- Sideline exits show `OUT OF BOUNDS`; goal-line exits show `JUST MISSED`.
+- `ScorePanel.Show(...)` now accepts optional text overrides for immediate physical-result labels while preserving the existing `Show(Scenario)` path.
+
+### Verification
+
+- `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
+- Remaining warnings are existing Unity obsolete API / serialized-field warnings.
+
+### Needs Quest Link / APK Check
+
+- Kick straight into the opponent goal mouth: should resolve as `GOAL`.
+- Kick wide past the front/back goal line: should resolve as `JUST MISSED`.
+- Kick over the left/right sideline: should resolve as `OUT OF BOUNDS`.
+- Confirm the ball no longer catches or sinks at the goal-mouth edge.
+
+## 2026-06-12 Feel Tuning Pass
+
+### Implemented
+
+- Feet moved slightly forward: default left/right pose offset is now `(0, -0.15, 0.16)`.
+- Boots / foot colliders are longer: default foot collider center is `(0, -0.03, 0.18)` and default foot size is `(0.2, 0.11, 0.58)`.
+- Right-stick horizontal yaw speed doubled from `95` to `190`.
+- Passive low-speed ball control is disabled by default in `PhysicalBallInteractor`, so low-speed / sole-like contact no longer directly brakes and holds the ball.
+- Physical impulse force was reduced:
+  - min impulse `1.2 -> 0.9`
+  - max impulse `7.0 -> 5.2`
+  - lift `0.12 -> 0.09`
+  - spin torque `0.08 -> 0.06`
+- `PhysicalTouchTest` / `FootBallTuningController` defaults were updated to match the runtime defaults.
+
+### Verification
+
+- `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
+- Remaining warnings are existing Unity obsolete API / serialized-field warnings.
+
+## 2026-06-12 Instep Shot Assist Pass
+
+### Intended Player Action
+
+- For a normal instep shot with hand controllers, the closest physical metaphor is:
+  - rotate the controller / "foot" slightly across the ball instead of pointing straight through it,
+  - keep the elbow / hand path slightly outside,
+  - swing hard forward toward the opponent goal.
+- In-game this should read as "斜脚背抽射", not a toe poke and not a sole stop.
+
+### Implemented
+
+- `MatchFlowController` now evaluates whether a possession-phase physical kick looks like an instep shot.
+- The check uses:
+  - `ContactZone` (`InstepZone` scores highest),
+  - foot/controller forward angle,
+  - swing direction toward the opponent goal,
+  - kick power.
+- If the shot already points roughly toward goal, the final physical impulse direction is gently biased toward the opponent goal center.
+- Max assist is capped at `0.28`, so this is correction / forgiveness rather than full auto-aim.
+- `[PhysicalBall]` logs now include `assist=0.xx` so Quest Link tests can confirm whether the action was recognized.
+
+### Verification
+
+- `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
+- Remaining warnings are existing Unity obsolete API / serialized-field warnings.
 
 ### Debug Checklist
 

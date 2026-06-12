@@ -21,20 +21,20 @@ namespace SoccerBot
 
         [Header("Physical Impulse")]
         [SerializeField] private float _minImpulseSpeed = 0.3f;
-        [SerializeField] private float _minImpulse = 1.2f;
-        [SerializeField] private float _maxImpulse = 7.0f;
+        [SerializeField] private float _minImpulse = 0.9f;
+        [SerializeField] private float _maxImpulse = 5.2f;
         [SerializeField, Range(0f, 1f)] private float _swingDirectionWeight = 0.75f;
-        [SerializeField] private float _lift = 0.12f;
-        [SerializeField] private float _spinTorque = 0.08f;
+        [SerializeField] private float _lift = 0.09f;
+        [SerializeField] private float _spinTorque = 0.06f;
         [SerializeField] private float _impulseCooldown = 0.12f;
         [SerializeField] private bool _debugImpulses = true;
 
         [Header("Passive Control")]
-        [SerializeField] private bool _enablePassiveControl = true;
+        [SerializeField] private bool _enablePassiveControl = false;
         [SerializeField] private float _passiveControlCooldown = 0.025f;
         [SerializeField, Range(0f, 1f)] private float _passiveVelocityDamping = 0.45f;
         [SerializeField] private float _passiveStopSpeed = 0.18f;
-        [SerializeField] private float _passiveSeparationImpulse = 0.08f;
+        [SerializeField] private float _passiveSeparationImpulse = 0.04f;
 
         private float _lastImpulseTime = -999f;
         private float _lastPassiveControlTime = -999f;
@@ -147,6 +147,13 @@ namespace SoccerBot
                 direction = swing;
             direction.Normalize();
 
+            float shotAssist01 = 0f;
+            if (_matchFlow != null &&
+                _matchFlow.TryAssistPhysicalShotDirection(data, direction, out Vector3 assistedDirection, out shotAssist01))
+            {
+                direction = assistedDirection;
+            }
+
             float impulse = Mathf.Lerp(_minImpulse, _maxImpulse, Mathf.Clamp01(data.Power01));
             impulse *= Mathf.Lerp(0.75f, 1.2f, Mathf.Clamp01(data.Accuracy01));
 
@@ -156,7 +163,7 @@ namespace SoccerBot
                 _ballBody.AddTorque(torqueAxis.normalized * impulse * _spinTorque, ForceMode.Impulse);
 
             if (_debugImpulses)
-                Debug.Log($"[PhysicalBall] {data.Foot} impulse={impulse:0.00} dir={direction} speed={data.ContactSpeed:0.00}");
+                Debug.Log($"[PhysicalBall] {data.Foot} impulse={impulse:0.00} dir={direction} speed={data.ContactSpeed:0.00} assist={shotAssist01:0.00}");
 
             PhysicalImpulseApplied?.Invoke(data, direction, impulse);
         }
