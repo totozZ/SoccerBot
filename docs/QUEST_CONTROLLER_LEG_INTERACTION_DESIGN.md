@@ -321,6 +321,15 @@ A: 完全物理化
 
 ### Latest Fix Notes
 
+- Added collider/contact diagnostics for the current physical-touch blocker:
+  - `TrackedLegController` now draws the main foot `BoxCollider`, shin `CapsuleCollider`, and toe/instep/sole contact zones as gizmos.
+  - Foot contacts now report `ContactZone`, `FootClosestPoint`, `BallClosestPoint`, and `ClosestPointDistance` in `FootContactData`.
+  - Trigger contacts now compute the contact sample from foot/ball closest points instead of only using the leg root transform.
+  - A short per-ball contact publish interval reduces duplicate events from overlapping debug/contact zones.
+  - `[TrackedLeg]` logs now include contact zone and closest-point distance so collider/model mismatch can be diagnosed from Console logs.
+- Extended `PhysicalTouchTest`:
+  - Overlay now shows the latest contact zone and foot-ball closest-point distance.
+  - Scene debug drawing now includes the closest-point line in addition to swing and impulse rays.
 - Fixed a likely left-foot tracking cause in `TrackedLegController`:
   - New components were enabled with the default `Right` handedness before `QuestControllerLegRig.Configure(...)` changed the left leg to `Left`.
   - This could leave `LeftTrackedLeg` named/colored as left while its input actions still read `<XRController>{RightHand}`.
@@ -370,10 +379,10 @@ A: 完全物理化
   - Likely cause is model / collider mismatch: the procedural boot visual, controller-driven pose offset, and simple foot `BoxCollider` do not line up well enough with the visible foot and ball.
   - This should be treated as a collider tuning / debug-visualization problem, not as a high-level MatchFlow problem yet.
 - Recommended next debugging pass:
-  - Draw foot `BoxCollider` and shin `CapsuleCollider` in Play Mode with distinct colors.
-  - Log/contact-draw both `ClosestPoint` and contact ray when a ball trigger happens.
-  - Tune `Foot Collider Center`, `Foot Size`, and pose offsets from `QuestControllerLegRig`, not from generated leg transforms.
-  - Consider replacing the single foot box with 2-3 trigger zones: sole, toe, and instep.
+  - Use the new gizmos and `PhysicalTouchTest` closest-point overlay to tune `Foot Collider Center`, `Foot Size`, and pose offsets from `QuestControllerLegRig`, not from generated leg transforms.
+  - Compare the visible boot against the cyan main foot box plus green/magenta/orange toe/instep/sole zones in Scene view during Quest Link Play Mode.
+  - If the closest-point distance is near zero but no impulse is applied, tune `PhysicalBallInteractor` thresholds/cooldown next.
+  - If the visible boot overlaps the ball but closest-point distance stays large, retune collider center/size before changing MatchFlow.
   - Keep `PhysicalTouchTest` as the main test path until contact reliability is acceptable.
 
 ### Planned Next Changes
@@ -382,6 +391,7 @@ A: 完全物理化
 - Run `PhysicalTouchTest` through Quest Link and APK:
   - Confirm fast swings do not miss contact.
   - Confirm the ball resets reliably and does not fight scripted `MatchFlow` control.
+  - Capture closest-point distance ranges for good visual touches vs missed touches.
   - Capture useful ranges for foot speed, `power01`, `accuracy01`, impulse, lift, and cooldown.
 - After that validation, add `FootBallTuningController`:
   - Runtime sliders/shortcuts for impulse, lift, speed thresholds, collider size, and reset offset.

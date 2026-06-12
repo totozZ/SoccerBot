@@ -28,11 +28,14 @@ namespace SoccerBot
 
         [Header("Leg Size")]
         [SerializeField] private float _legScale = 0.5f;
-        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.08f);
-        [SerializeField] private Vector3 _footSize = new Vector3(0.18f, 0.11f, 0.36f);
+        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.15f);
+        [SerializeField] private Vector3 _footSize = new Vector3(0.2f, 0.11f, 0.48f);
         [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
         [SerializeField] private float _shinRadius = 0.055f;
         [SerializeField] private float _shinHeight = 0.5f;
+        [SerializeField] private bool _lockFeetToGroundPlane = true;
+        [SerializeField] private float _groundPlaneY = 0f;
+        [SerializeField] private float _soleGroundClearance = 0.025f;
 
         [Header("Interaction")]
         [SerializeField] private LayerMask _ballLayer = ~0;
@@ -43,6 +46,17 @@ namespace SoccerBot
 
         public TrackedLegController LeftLeg => _leftLeg;
         public TrackedLegController RightLeg => _rightLeg;
+        public Vector3 LeftPoseOffsetPosition => _leftPoseOffsetPosition;
+        public Vector3 RightPoseOffsetPosition => _rightPoseOffsetPosition;
+        public float LegScale => _legScale;
+        public Vector3 FootColliderCenter => _footColliderCenter;
+        public Vector3 FootSize => _footSize;
+        public Vector3 ShinColliderCenter => _shinColliderCenter;
+        public float ShinRadius => _shinRadius;
+        public float ShinHeight => _shinHeight;
+        public bool LockFeetToGroundPlane => _lockFeetToGroundPlane;
+        public float GroundPlaneY => _groundPlaneY;
+        public float SoleGroundClearance => _soleGroundClearance;
 
         private bool _settingsDirty;
         private bool _loggedRigDiagnostics;
@@ -59,6 +73,38 @@ namespace SoccerBot
         {
             _ballLayer = ballLayer;
             SetFootBallInteraction(enabled, ensurePhysicalBallInteractor);
+        }
+
+        public void ConfigureRuntimeTuning(
+            Vector3 leftPoseOffsetPosition,
+            Vector3 rightPoseOffsetPosition,
+            float legScale,
+            Vector3 footColliderCenter,
+            Vector3 footSize,
+            Vector3 shinColliderCenter,
+            float shinRadius,
+            float shinHeight,
+            bool lockFeetToGroundPlane,
+            float groundPlaneY,
+            float soleGroundClearance)
+        {
+            _leftPoseOffsetPosition = leftPoseOffsetPosition;
+            _rightPoseOffsetPosition = rightPoseOffsetPosition;
+            _legScale = Mathf.Max(0.05f, legScale);
+            _footColliderCenter = footColliderCenter;
+            _footSize = new Vector3(
+                Mathf.Max(0.02f, footSize.x),
+                Mathf.Max(0.02f, footSize.y),
+                Mathf.Max(0.02f, footSize.z));
+            _shinColliderCenter = shinColliderCenter;
+            _shinRadius = Mathf.Max(0.005f, shinRadius);
+            _shinHeight = Mathf.Max(0.02f, shinHeight);
+            _lockFeetToGroundPlane = lockFeetToGroundPlane;
+            _groundPlaneY = groundPlaneY;
+            _soleGroundClearance = Mathf.Max(0f, soleGroundClearance);
+
+            EnsureRig();
+            ApplySettingsToExistingLegs();
         }
 
         private void Start()
@@ -83,6 +129,7 @@ namespace SoccerBot
             _legScale = Mathf.Max(0.05f, _legScale);
             _shinRadius = Mathf.Max(0.005f, _shinRadius);
             _shinHeight = Mathf.Max(0.02f, _shinHeight);
+            _soleGroundClearance = Mathf.Max(0f, _soleGroundClearance);
             _settingsDirty = true;
         }
 
@@ -201,6 +248,9 @@ namespace SoccerBot
                 _shinColliderCenter * legScale,
                 _shinRadius * legScale,
                 _shinHeight * legScale,
+                _lockFeetToGroundPlane,
+                _groundPlaneY,
+                _soleGroundClearance,
                 _ballLayer,
                 _buildDefaultVisuals,
                 _enableFootBallInteraction);

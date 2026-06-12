@@ -29,7 +29,23 @@ namespace SoccerBot
         [SerializeField] private float _impulseCooldown = 0.12f;
         [SerializeField] private bool _debugImpulses = true;
 
+        [Header("Passive Control")]
+        [SerializeField] private bool _enablePassiveControl = true;
+        [SerializeField] private float _passiveControlCooldown = 0.025f;
+        [SerializeField, Range(0f, 1f)] private float _passiveVelocityDamping = 0.45f;
+        [SerializeField] private float _passiveStopSpeed = 0.18f;
+        [SerializeField] private float _passiveSeparationImpulse = 0.08f;
+
         private float _lastImpulseTime = -999f;
+        private float _lastPassiveControlTime = -999f;
+
+        public float MinImpulseSpeed => _minImpulseSpeed;
+        public float MinImpulse => _minImpulse;
+        public float MaxImpulse => _maxImpulse;
+        public float SwingDirectionWeight => _swingDirectionWeight;
+        public float Lift => _lift;
+        public float SpinTorque => _spinTorque;
+        public float ImpulseCooldown => _impulseCooldown;
 
         public void ConfigureRouting(bool routeToMatchFlow, bool applyImpulseOutsideMatchFlow, bool debugImpulses)
         {
@@ -37,6 +53,24 @@ namespace SoccerBot
             _applyImpulseOutsideMatchFlow = applyImpulseOutsideMatchFlow;
             _debugImpulses = debugImpulses;
             ResolveReferences();
+        }
+
+        public void ConfigurePhysicalImpulse(
+            float minImpulseSpeed,
+            float minImpulse,
+            float maxImpulse,
+            float swingDirectionWeight,
+            float lift,
+            float spinTorque,
+            float impulseCooldown)
+        {
+            _minImpulseSpeed = Mathf.Max(0f, minImpulseSpeed);
+            _minImpulse = Mathf.Max(0f, minImpulse);
+            _maxImpulse = Mathf.Max(_minImpulse, maxImpulse);
+            _swingDirectionWeight = Mathf.Clamp01(swingDirectionWeight);
+            _lift = Mathf.Max(0f, lift);
+            _spinTorque = Mathf.Max(0f, spinTorque);
+            _impulseCooldown = Mathf.Max(0f, impulseCooldown);
         }
 
         private void Awake()
@@ -77,7 +111,10 @@ namespace SoccerBot
                 return;
 
             if (!_applyImpulseOutsideMatchFlow || data.ContactSpeed < _minImpulseSpeed)
+            {
+                ApplyPassiveControl(data);
                 return;
+            }
 
             if (Time.time - _lastImpulseTime < _impulseCooldown)
                 return;
@@ -122,6 +159,42 @@ namespace SoccerBot
                 Debug.Log($"[PhysicalBall] {data.Foot} impulse={impulse:0.00} dir={direction} speed={data.ContactSpeed:0.00}");
 
             PhysicalImpulseApplied?.Invoke(data, direction, impulse);
+        }
+
+        private void ApplyPassiveControl(FootContactData data)
+        {
+            if (!_enablePassiveControl || _ball == null || _ballBody == null)
+                return;
+            if (Time.time - _lastPassiveControlTime < _passiveControlCooldown)
+                return;
+
+            _lastPassiveControlTime = Time.time;
+            _ball.SetPhysicalSimulation(true, false);
+
+            Vector3 velocity = _ballBody.linearVelocity;
+            Vector3 horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            if (horizontalVelocity.magnitude <= _passiveStopSpeed)
+            {
+                horizontalVelocity = Vector3.zero;
+            }
+            else
+            {
+                horizontalVelocity *= Mathf.Clamp01(_passiveVelocityDamping);
+            }
+
+            _ballBody.linearVelocity = new Vector3(horizontalVelocity.x, Mathf.Min(velocity.y, 0f), horizontalVelocity.z);
+            _ballBody.angularVelocity *= Mathf.Clamp01(_passiveVelocityDamping);
+
+            Vector3 away = data.BallClosestPoint - data.FootClosestPoint;
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.0001f)
+            {
+                away = _ballBody.worldCenterOfMass - data.FootPosition;
+                away.y = 0f;
+            }
+
+            if (away.sqrMagnitude > 0.0001f && _passiveSeparationImpulse > 0f)
+                _ballBody.AddForce(away.normalized * _passiveSeparationImpulse, ForceMode.Impulse);
         }
     }
 }

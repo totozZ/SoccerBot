@@ -27,10 +27,14 @@ namespace SoccerBot
         public readonly Vector3 SwingDirection;
         public readonly Vector3 ContactPoint;
         public readonly Vector3 ContactNormal;
+        public readonly Vector3 FootClosestPoint;
+        public readonly Vector3 BallClosestPoint;
+        public readonly float ClosestPointDistance;
         public readonly float ContactSpeed;
         public readonly float Power01;
         public readonly float Accuracy01;
         public readonly bool ShootIntentHeld;
+        public readonly string ContactZone;
 
         public FootContactData(
             TrackedLegHandedness foot,
@@ -47,10 +51,14 @@ namespace SoccerBot
             Vector3 swingDirection,
             Vector3 contactPoint,
             Vector3 contactNormal,
+            Vector3 footClosestPoint,
+            Vector3 ballClosestPoint,
+            float closestPointDistance,
             float contactSpeed,
             float power01,
             float accuracy01,
-            bool shootIntentHeld)
+            bool shootIntentHeld,
+            string contactZone)
         {
             Foot = foot;
             Source = source;
@@ -66,10 +74,14 @@ namespace SoccerBot
             SwingDirection = swingDirection;
             ContactPoint = contactPoint;
             ContactNormal = contactNormal;
+            FootClosestPoint = footClosestPoint;
+            BallClosestPoint = ballClosestPoint;
+            ClosestPointDistance = closestPointDistance;
             ContactSpeed = contactSpeed;
             Power01 = power01;
             Accuracy01 = accuracy01;
             ShootIntentHeld = shootIntentHeld;
+            ContactZone = contactZone;
         }
     }
 
@@ -93,20 +105,30 @@ namespace SoccerBot
         [SerializeField] private Rigidbody _footBody;
         [SerializeField] private Collider _footCollider;
         [SerializeField] private CapsuleCollider _shinCollider;
-        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.08f);
-        [SerializeField] private Vector3 _footColliderSize = new Vector3(0.18f, 0.11f, 0.36f);
+        [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.15f);
+        [SerializeField] private Vector3 _footColliderSize = new Vector3(0.2f, 0.11f, 0.48f);
         [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
         [SerializeField] private float _shinColliderRadius = 0.055f;
         [SerializeField] private float _shinColliderHeight = 0.5f;
         [SerializeField] private bool _buildDefaultVisual = true;
+        [SerializeField] private bool _useFootContactZones = true;
+        [SerializeField] private bool _lockFootToGroundPlane = true;
+        [SerializeField] private float _groundPlaneY = 0f;
+        [SerializeField] private float _soleGroundClearance = 0.025f;
 
         [Header("Interaction")]
         [SerializeField] private bool _interactionEnabled = false;
         [SerializeField] private LayerMask _ballLayer = ~0;
         [SerializeField] private float _minInteractionSpeed = 0.15f;
         [SerializeField] private float _fullPowerSpeed = 4.0f;
+        [SerializeField] private float _contactPublishInterval = 0.03f;
         [SerializeField] private float _contactLogInterval = 0.25f;
         [SerializeField] private bool _debugContacts = true;
+
+        [Header("Debug Drawing")]
+        [SerializeField] private bool _drawColliderGizmos = true;
+        [SerializeField] private bool _drawContactDebug = true;
+        [SerializeField] private float _contactDebugDuration = 0.18f;
 
         private InputAction _positionAction;
         private InputAction _rotationAction;
@@ -128,6 +150,9 @@ namespace SoccerBot
         private bool _loggedTrackingDiagnostics;
         private float _lastSampleTime;
         private float _lastContactLogTime;
+        private float _lastPublishedContactTime = -999f;
+        private Collider _lastPublishedBallCollider;
+        private TrackedLegContactZone[] _contactZones = Array.Empty<TrackedLegContactZone>();
 
         public TrackedLegHandedness Handedness => _handedness;
         public Vector3 FootVelocity => _latestWorldVelocity;
@@ -146,6 +171,9 @@ namespace SoccerBot
             Vector3 shinColliderCenter,
             float shinColliderRadius,
             float shinColliderHeight,
+            bool lockFootToGroundPlane,
+            float groundPlaneY,
+            float soleGroundClearance,
             LayerMask ballLayer,
             bool buildDefaultVisual,
             bool interactionEnabled)
@@ -161,6 +189,9 @@ namespace SoccerBot
             _shinColliderCenter = shinColliderCenter;
             _shinColliderRadius = Mathf.Max(0.005f, shinColliderRadius);
             _shinColliderHeight = Mathf.Max(0.02f, shinColliderHeight);
+            _lockFootToGroundPlane = lockFootToGroundPlane;
+            _groundPlaneY = groundPlaneY;
+            _soleGroundClearance = Mathf.Max(0f, soleGroundClearance);
             _ballLayer = ballLayer;
             _buildDefaultVisual = buildDefaultVisual;
             _interactionEnabled = interactionEnabled;
@@ -331,6 +362,72 @@ namespace SoccerBot
             _shinCollider.height = _shinColliderHeight;
             _shinCollider.direction = 1;
             _shinCollider.isTrigger = true;
+
+            EnsureContactZones();
+        }
+
+        private void EnsureContactZones()
+        {
+            Transform zonesRoot = transform.Find("FootContactZones");
+            if (zonesRoot == null)
+            {
+                var zonesGo = new GameObject("FootContactZones");
+                zonesGo.transform.SetParent(transform, false);
+                zonesRoot = zonesGo.transform;
+            }
+
+            zonesRoot.localPosition = Vector3.zero;
+            zonesRoot.localRotation = Quaternion.identity;
+            zonesRoot.gameObject.SetActive(_useFootContactZones);
+
+            _contactZones = new[]
+            {
+                EnsureContactZone(
+                    zonesRoot,
+                    "ToeZone",
+                    _footColliderCenter + new Vector3(0f, 0f, _footColliderSize.z * 0.44f),
+                    new Vector3(_footColliderSize.x * 0.95f, _footColliderSize.y * 1.18f, _footColliderSize.z * 0.28f)),
+                EnsureContactZone(
+                    zonesRoot,
+                    "InstepZone",
+                    _footColliderCenter + new Vector3((_handedness == TrackedLegHandedness.Left ? 0.26f : -0.26f) * _footColliderSize.x, 0f, _footColliderSize.z * 0.06f),
+                    new Vector3(_footColliderSize.x * 0.52f, _footColliderSize.y * 1.18f, _footColliderSize.z * 0.56f)),
+                EnsureContactZone(
+                    zonesRoot,
+                    "SoleZone",
+                    _footColliderCenter + new Vector3(0f, -_footColliderSize.y * 0.43f, -_footColliderSize.z * 0.02f),
+                    new Vector3(_footColliderSize.x * 0.98f, _footColliderSize.y * 0.32f, _footColliderSize.z * 0.82f))
+            };
+        }
+
+        private TrackedLegContactZone EnsureContactZone(Transform parent, string zoneName, Vector3 center, Vector3 size)
+        {
+            Transform zoneTransform = parent.Find(zoneName);
+            if (zoneTransform == null)
+            {
+                var zoneGo = new GameObject(zoneName);
+                zoneGo.transform.SetParent(parent, false);
+                zoneTransform = zoneGo.transform;
+            }
+
+            zoneTransform.localPosition = center;
+            zoneTransform.localRotation = Quaternion.identity;
+            zoneTransform.localScale = Vector3.one;
+
+            var zoneCollider = zoneTransform.GetComponent<BoxCollider>();
+            if (zoneCollider == null)
+                zoneCollider = zoneTransform.gameObject.AddComponent<BoxCollider>();
+            zoneCollider.center = Vector3.zero;
+            zoneCollider.size = ClampSize(size, new Vector3(0.01f, 0.01f, 0.01f));
+            zoneCollider.isTrigger = true;
+            zoneCollider.enabled = _useFootContactZones;
+
+            var zone = zoneTransform.GetComponent<TrackedLegContactZone>();
+            if (zone == null)
+                zone = zoneTransform.gameObject.AddComponent<TrackedLegContactZone>();
+            zone.Configure(this, zoneCollider, zoneName);
+
+            return zone;
         }
 
         private void EnsureDefaultVisual()
@@ -517,6 +614,7 @@ namespace SoccerBot
             Quaternion trackingToWorldRotation = ResolveTrackingToWorldRotation();
             Vector3 worldPosition = ResolveWorldPosition(offsetLocalPosition, trackingToWorldRotation);
             Quaternion worldRotation = trackingToWorldRotation * offsetLocalRotation;
+            worldPosition = ApplyGroundPlaneLock(worldPosition);
 
             float now = Time.time;
             float dt = _hasSample ? Mathf.Max(now - _lastSampleTime, 0.0001f) : Mathf.Max(Time.deltaTime, 0.0001f);
@@ -552,6 +650,16 @@ namespace SoccerBot
             return _trackingSpaceRoot != null
                 ? _trackingSpaceRoot.TransformPoint(offsetLocalPosition)
                 : offsetLocalPosition;
+        }
+
+        private Vector3 ApplyGroundPlaneLock(Vector3 worldPosition)
+        {
+            if (!_lockFootToGroundPlane)
+                return worldPosition;
+
+            float colliderBottomLocalY = _footColliderCenter.y - _footColliderSize.y * 0.5f;
+            worldPosition.y = _groundPlaneY + _soleGroundClearance - colliderBottomLocalY;
+            return worldPosition;
         }
 
         private bool TryReadHmdPosition(out Vector3 position)
@@ -620,26 +728,68 @@ namespace SoccerBot
             ContactPoint contact = collision.contactCount > 0
                 ? collision.GetContact(0)
                 : default;
+            Collider sourceCollider = collision.contactCount > 0 && contact.thisCollider != null
+                ? contact.thisCollider
+                : _footCollider;
             Vector3 point = collision.contactCount > 0 ? contact.point : collision.collider.ClosestPoint(transform.position);
             Vector3 normal = collision.contactCount > 0 ? contact.normal : (transform.position - point).normalized;
-            PublishContact(collision.collider, point, normal);
+            PublishContact(collision.collider, sourceCollider, point, normal);
         }
 
         private void PublishTriggerContact(Collider other)
+        {
+            PublishTriggerContact(other, ResolveBestTriggerSource(other));
+        }
+
+        internal void PublishZoneTriggerContact(Collider sourceCollider, Collider other)
+        {
+            PublishTriggerContact(other, sourceCollider);
+        }
+
+        private void PublishTriggerContact(Collider other, Collider sourceCollider)
         {
             if (!_interactionEnabled)
                 return;
             if (other == null || !IsCandidateBall(other))
                 return;
 
-            Vector3 point = other.ClosestPoint(transform.position);
-            Vector3 normal = (transform.position - point).normalized;
-            PublishContact(other, point, normal);
+            BuildClosestPointContact(sourceCollider, other, out Vector3 point, out Vector3 normal);
+            PublishContact(other, sourceCollider, point, normal);
         }
 
-        private void PublishContact(Collider ballCollider, Vector3 contactPoint, Vector3 contactNormal)
+        private Collider ResolveBestTriggerSource(Collider ballCollider)
+        {
+            if (!_useFootContactZones || _contactZones == null || ballCollider == null)
+                return _footCollider;
+
+            Vector3 ballCenter = ballCollider.attachedRigidbody != null
+                ? ballCollider.attachedRigidbody.worldCenterOfMass
+                : ballCollider.bounds.center;
+
+            Collider best = _footCollider;
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < _contactZones.Length; i++)
+            {
+                Collider zoneCollider = _contactZones[i] != null ? _contactZones[i].ZoneCollider : null;
+                if (zoneCollider == null || !zoneCollider.enabled || !zoneCollider.gameObject.activeInHierarchy)
+                    continue;
+
+                float distance = Vector3.SqrMagnitude(zoneCollider.ClosestPoint(ballCenter) - ballCenter);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = zoneCollider;
+                }
+            }
+
+            return best != null ? best : _footCollider;
+        }
+
+        private void PublishContact(Collider ballCollider, Collider sourceCollider, Vector3 contactPoint, Vector3 contactNormal)
         {
             Rigidbody ballBody = ballCollider.attachedRigidbody;
+            Collider contactCollider = sourceCollider != null ? sourceCollider : _footCollider;
+            BuildClosestPointPair(contactCollider, ballCollider, out Vector3 footClosestPoint, out Vector3 ballClosestPoint, out float closestPointDistance);
             Vector3 swingDirection = _latestWorldVelocity.sqrMagnitude > 0.0001f
                 ? _latestWorldVelocity.normalized
                 : transform.forward;
@@ -651,19 +801,22 @@ namespace SoccerBot
                 ballDirection = swingDirection;
 
             float contactSpeed = _latestWorldVelocity.magnitude;
-            if (contactSpeed < _minInteractionSpeed)
+            if (_contactPublishInterval > 0f &&
+                ballCollider == _lastPublishedBallCollider &&
+                Time.time - _lastPublishedContactTime < _contactPublishInterval)
                 return;
 
             float power01 = Mathf.InverseLerp(_minInteractionSpeed, _fullPowerSpeed, contactSpeed);
             float swingAccuracy = Mathf.Clamp01(Vector3.Dot(swingDirection, ballDirection.normalized) * 0.5f + 0.5f);
             float faceAccuracy = Mathf.Clamp01(Vector3.Dot(footForward.normalized, ballDirection.normalized) * 0.5f + 0.5f);
             float accuracy01 = Mathf.Clamp01(swingAccuracy * 0.65f + faceAccuracy * 0.35f);
+            string contactZone = DescribeContactZone(contactCollider);
 
             var data = new FootContactData(
                 _handedness,
                 this,
                 _footBody,
-                _footCollider,
+                contactCollider,
                 ballCollider,
                 ballBody,
                 _latestWorldPosition,
@@ -674,18 +827,82 @@ namespace SoccerBot
                 swingDirection,
                 contactPoint,
                 contactNormal,
+                footClosestPoint,
+                ballClosestPoint,
+                closestPointDistance,
                 contactSpeed,
                 Mathf.Clamp01(power01),
                 accuracy01,
-                ShootIntentHeld);
+                ShootIntentHeld,
+                contactZone);
 
+            _lastPublishedContactTime = Time.time;
+            _lastPublishedBallCollider = ballCollider;
             GlobalFootContact?.Invoke(data);
+            DrawContactDebug(data);
 
             if (_debugContacts && Time.time - _lastContactLogTime >= _contactLogInterval)
             {
                 _lastContactLogTime = Time.time;
-                Debug.Log($"[TrackedLeg] {_handedness} contact '{ballCollider.name}' speed={contactSpeed:0.00} power={power01:0.00} accuracy={accuracy01:0.00} point={contactPoint}");
+                Debug.Log(
+                    $"[TrackedLeg] {_handedness} contact '{ballCollider.name}' zone={contactZone} " +
+                    $"speed={contactSpeed:0.00} power={power01:0.00} accuracy={accuracy01:0.00} " +
+                    $"closestDistance={closestPointDistance:0.000} footClosest={footClosestPoint} ballClosest={ballClosestPoint}");
             }
+        }
+
+        private void BuildClosestPointContact(Collider sourceCollider, Collider ballCollider, out Vector3 contactPoint, out Vector3 contactNormal)
+        {
+            BuildClosestPointPair(sourceCollider, ballCollider, out Vector3 footClosestPoint, out Vector3 ballClosestPoint, out float distance);
+            contactPoint = ballClosestPoint;
+
+            Vector3 normal = footClosestPoint - ballClosestPoint;
+            if (normal.sqrMagnitude < 0.000001f)
+            {
+                Vector3 ballCenter = ballCollider.attachedRigidbody != null
+                    ? ballCollider.attachedRigidbody.worldCenterOfMass
+                    : ballCollider.bounds.center;
+                normal = footClosestPoint - ballCenter;
+            }
+
+            if (normal.sqrMagnitude < 0.000001f)
+                normal = -transform.forward;
+
+            contactNormal = normal.normalized;
+            if (distance <= 0.0001f)
+                contactPoint = footClosestPoint;
+        }
+
+        private void BuildClosestPointPair(Collider footCollider, Collider ballCollider, out Vector3 footClosestPoint, out Vector3 ballClosestPoint, out float distance)
+        {
+            Vector3 ballCenter = ballCollider.attachedRigidbody != null
+                ? ballCollider.attachedRigidbody.worldCenterOfMass
+                : ballCollider.bounds.center;
+
+            footClosestPoint = footCollider != null ? footCollider.ClosestPoint(ballCenter) : transform.position;
+            ballClosestPoint = ballCollider.ClosestPoint(footClosestPoint);
+            distance = Vector3.Distance(footClosestPoint, ballClosestPoint);
+        }
+
+        private string DescribeContactZone(Collider contactCollider)
+        {
+            if (contactCollider == null)
+                return "Unknown";
+            if (contactCollider == _footCollider)
+                return "FootBox";
+            if (_shinCollider != null && contactCollider == _shinCollider)
+                return "Shin";
+            return contactCollider.name;
+        }
+
+        private void DrawContactDebug(FootContactData data)
+        {
+            if (!_drawContactDebug)
+                return;
+
+            Debug.DrawLine(data.FootClosestPoint, data.BallClosestPoint, Color.magenta, _contactDebugDuration);
+            Debug.DrawRay(data.ContactPoint, data.ContactNormal * 0.22f, Color.cyan, _contactDebugDuration);
+            Debug.DrawRay(data.ContactPoint, data.SwingDirection * 0.34f, Color.yellow, _contactDebugDuration);
         }
 
         private bool IsCandidateBall(Collider other)
@@ -705,6 +922,14 @@ namespace SoccerBot
                 _footCollider.isTrigger = true;
             if (_shinCollider != null)
                 _shinCollider.isTrigger = true;
+            if (_contactZones != null)
+            {
+                for (int i = 0; i < _contactZones.Length; i++)
+                {
+                    if (_contactZones[i] != null)
+                        _contactZones[i].SetEnabled(_useFootContactZones);
+                }
+            }
         }
 
         private void SetTrackingObjectsActive(bool active)
@@ -715,6 +940,14 @@ namespace SoccerBot
                 _shinCollider.enabled = active;
             if (_visualRoot != null && _visualRoot.gameObject.activeSelf != active)
                 _visualRoot.gameObject.SetActive(active);
+            if (_contactZones != null)
+            {
+                for (int i = 0; i < _contactZones.Length; i++)
+                {
+                    if (_contactZones[i] != null)
+                        _contactZones[i].SetEnabled(active && _useFootContactZones);
+                }
+            }
         }
 
         private static Material CreateMaterial(string name, Color color)
@@ -877,6 +1110,87 @@ namespace SoccerBot
             }
 
             return path;
+        }
+
+        private void OnDrawGizmos()
+        {
+            if (!_drawColliderGizmos)
+                return;
+
+            DrawBoxGizmo(transform, _footColliderCenter, _footColliderSize, new Color(0.1f, 0.9f, 1f, 0.85f));
+            DrawCapsuleGizmo(transform, _shinColliderCenter, _shinColliderRadius, _shinColliderHeight, new Color(1f, 0.8f, 0.1f, 0.85f));
+
+            if (!_useFootContactZones)
+                return;
+
+            DrawBoxGizmo(transform, _footColliderCenter + new Vector3(0f, 0f, _footColliderSize.z * 0.44f), new Vector3(_footColliderSize.x * 0.95f, _footColliderSize.y * 1.18f, _footColliderSize.z * 0.28f), new Color(0f, 1f, 0.25f, 0.7f));
+            DrawBoxGizmo(transform, _footColliderCenter + new Vector3((_handedness == TrackedLegHandedness.Left ? 0.26f : -0.26f) * _footColliderSize.x, 0f, _footColliderSize.z * 0.06f), new Vector3(_footColliderSize.x * 0.52f, _footColliderSize.y * 1.18f, _footColliderSize.z * 0.56f), new Color(1f, 0.25f, 0.95f, 0.7f));
+            DrawBoxGizmo(transform, _footColliderCenter + new Vector3(0f, -_footColliderSize.y * 0.43f, -_footColliderSize.z * 0.02f), new Vector3(_footColliderSize.x * 0.98f, _footColliderSize.y * 0.32f, _footColliderSize.z * 0.82f), new Color(1f, 0.45f, 0.1f, 0.7f));
+        }
+
+        private static void DrawBoxGizmo(Transform basis, Vector3 center, Vector3 size, Color color)
+        {
+            Matrix4x4 oldMatrix = Gizmos.matrix;
+            Color oldColor = Gizmos.color;
+            Gizmos.matrix = basis.localToWorldMatrix;
+            Gizmos.color = color;
+            Gizmos.DrawWireCube(center, size);
+            Gizmos.matrix = oldMatrix;
+            Gizmos.color = oldColor;
+        }
+
+        private static void DrawCapsuleGizmo(Transform basis, Vector3 center, float radius, float height, Color color)
+        {
+            Matrix4x4 oldMatrix = Gizmos.matrix;
+            Color oldColor = Gizmos.color;
+            Gizmos.matrix = basis.localToWorldMatrix;
+            Gizmos.color = color;
+
+            float cylinderHalf = Mathf.Max(0f, height * 0.5f - radius);
+            Vector3 top = center + Vector3.up * cylinderHalf;
+            Vector3 bottom = center - Vector3.up * cylinderHalf;
+            Gizmos.DrawWireSphere(top, radius);
+            Gizmos.DrawWireSphere(bottom, radius);
+            Gizmos.DrawLine(top + Vector3.forward * radius, bottom + Vector3.forward * radius);
+            Gizmos.DrawLine(top - Vector3.forward * radius, bottom - Vector3.forward * radius);
+            Gizmos.DrawLine(top + Vector3.right * radius, bottom + Vector3.right * radius);
+            Gizmos.DrawLine(top - Vector3.right * radius, bottom - Vector3.right * radius);
+
+            Gizmos.matrix = oldMatrix;
+            Gizmos.color = oldColor;
+        }
+    }
+
+    public sealed class TrackedLegContactZone : MonoBehaviour
+    {
+        private TrackedLegController _owner;
+        private Collider _zoneCollider;
+
+        public Collider ZoneCollider => _zoneCollider;
+
+        public void Configure(TrackedLegController owner, Collider zoneCollider, string zoneName)
+        {
+            _owner = owner;
+            _zoneCollider = zoneCollider;
+            name = zoneName;
+        }
+
+        public void SetEnabled(bool enabled)
+        {
+            if (_zoneCollider != null)
+                _zoneCollider.enabled = enabled;
+            if (gameObject.activeSelf != enabled)
+                gameObject.SetActive(enabled);
+        }
+
+        private void OnTriggerEnter(Collider other)
+        {
+            _owner?.PublishZoneTriggerContact(_zoneCollider, other);
+        }
+
+        private void OnTriggerStay(Collider other)
+        {
+            _owner?.PublishZoneTriggerContact(_zoneCollider, other);
         }
     }
 }
