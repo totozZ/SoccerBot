@@ -107,9 +107,9 @@ namespace SoccerBot
         [SerializeField] private CapsuleCollider _shinCollider;
         [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.18f);
         [SerializeField] private Vector3 _footColliderSize = new Vector3(0.2f, 0.11f, 0.58f);
-        [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
+        [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.29f, -0.08f);
         [SerializeField] private float _shinColliderRadius = 0.055f;
-        [SerializeField] private float _shinColliderHeight = 0.5f;
+        [SerializeField] private float _shinColliderHeight = 0.68f;
         [SerializeField] private bool _buildDefaultVisual = true;
         [SerializeField] private bool _useFootContactZones = true;
         [SerializeField] private bool _lockFootToGroundPlane = true;

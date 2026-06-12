@@ -512,16 +512,16 @@ namespace SoccerBot
         [Header("Leg Pose")]
         [SerializeField] private Vector3 _leftPoseOffset = new Vector3(0f, -0.15f, 0.16f);
         [SerializeField] private Vector3 _rightPoseOffset = new Vector3(0f, -0.15f, 0.16f);
-        [SerializeField] private float _legScale = 0.5f;
+        [SerializeField] private float _legScale = 0.56f;
 
         [Header("Foot Collider")]
         [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.18f);
         [SerializeField] private Vector3 _footSize = new Vector3(0.2f, 0.11f, 0.58f);
 
         [Header("Shin Collider")]
-        [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.22f, -0.08f);
+        [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.29f, -0.08f);
         [SerializeField] private float _shinRadius = 0.055f;
-        [SerializeField] private float _shinHeight = 0.5f;
+        [SerializeField] private float _shinHeight = 0.68f;
 
         [Header("Ground Alignment")]
         [SerializeField] private bool _lockFeetToGroundPlane = true;

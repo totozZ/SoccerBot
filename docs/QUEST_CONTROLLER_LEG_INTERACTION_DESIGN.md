@@ -587,6 +587,25 @@ A: 完全物理化
 - `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
 - Remaining warnings are existing Unity obsolete API / serialized-field warnings.
 
+## 2026-06-12 Leg Scale / Motion Note
+
+### Implemented
+
+- Legs were slightly enlarged for Quest readability:
+  - default `Leg Scale` is now `0.56`.
+  - default `Shin Collider Center` is now `(0, 0.29, -0.08)`.
+  - default `Shin Height` is now `0.68`.
+- The same defaults were applied to `QuestControllerLegRig`, `TrackedLegController`, and `PhysicalTouchTest` / `FootBallTuningController`, so model size and hitbox size stay aligned.
+
+### Recorded Issue
+
+- The controller angle is already read from `<XRController>{LeftHand|RightHand}/deviceRotation` and applied to each tracked leg.
+- The current visual still feels fixed because the generated leg is one rigid boot/shin assembly. It has no separate ankle/knee articulation, so the whole model rotates as one piece instead of showing a natural lower-leg pose.
+- Next visual pass should split the display into at least:
+  - foot / boot driven directly by controller rotation,
+  - shin segment with a softer derived orientation,
+  - optional knee anchor or bend hint so controller roll/pitch reads as leg motion rather than a stiff prop.
+
 ### Debug Checklist
 
 - Play Mode 中应出现 `LeftTrackedLeg` 和 `RightTrackedLeg`。
