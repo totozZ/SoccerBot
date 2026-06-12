@@ -26,12 +26,13 @@ namespace SoccerBot
         [SerializeField] private Vector3 _ballLocalOffset = new Vector3(0f, 0.35f, 1.15f);
         [SerializeField] private float _resetCooldown = 0.15f;
         [SerializeField] private bool _ensureTestGround = true;
+        [SerializeField] private bool _useFieldGroundWhenAvailable = true;
         [SerializeField] private Vector3 _groundSize = new Vector3(4f, 0.08f, 5f);
         [SerializeField] private float _groundForwardOffset = 1.4f;
         [SerializeField] private bool _ensureBoundaryWalls = true;
         [SerializeField] private bool _resetOutOfBoundsBall = true;
         [SerializeField] private bool _showBoundaryWalls = false;
-        [SerializeField] private float _boundaryPadding = 0.2f;
+        [SerializeField] private float _boundaryPadding = 0.45f;
         [SerializeField] private float _boundaryWallHeight = 0.55f;
         [SerializeField] private float _boundaryWallThickness = 0.12f;
         [SerializeField] private float _fallResetY = -0.75f;
@@ -261,6 +262,13 @@ namespace SoccerBot
         {
             if (!_ensureTestGround)
                 return;
+
+            if (_useFieldGroundWhenAvailable && FindAnyObjectByType<FieldBuilder>(FindObjectsInactive.Include) != null)
+            {
+                if (_testGround != null)
+                    _testGround.SetActive(false);
+                return;
+            }
 
             if (_testGround == null)
             {

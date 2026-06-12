@@ -436,6 +436,91 @@ A: 完全物理化
   - 脚本挂载/插值控制球时保持 `Rigidbody.isKinematic = true`。
   - 物理脚触球时切到非 kinematic，并启用连续碰撞检测。
 
+## 2026-06-12 Current Runtime State
+
+### Implemented
+
+- Foot-ball contact is now treated as continuous physical control by default.
+  - During `MatchFlowController.Phase.Possession`, normal foot contact returns `false` from `HandleFootBallContact(...)`.
+  - This lets `PhysicalBallInteractor` continue applying passive control or physical impulse.
+  - A small foot movement should not lock the match into pass / shot judgement.
+- Right trigger is now only a pass-intent marker.
+  - Pressing right trigger while contacting the ball records a pending pass judgement.
+  - The ball still remains physically controlled after that touch.
+  - The actual pass result is delayed until the ball reaches the teammate area.
+- Current judgement events are:
+  - Right trigger contact: mark pass intent only.
+  - Ball reaches teammate radius after pass intent: resolve intercepted / successful / missed teammate shot by pass power and arrival speed.
+  - Ball leaves field bounds or hits the invisible boundary wall: resolve miss / out of play.
+  - Ball enters the opponent goal volume: resolve score.
+- Direct physical shooting is allowed while still in possession.
+  - The player can freely kick the ball toward the opponent goal.
+  - Match flow resolves only when the goal volume or out-of-bounds condition is detected.
+- Boundary protection exists in both the match flow and physical touch test path.
+  - `MatchFlowController` creates an invisible `MatchFlowBoundary` around the generated field.
+  - `PhysicalTouchTest` creates its own invisible test boundary when running that mode.
+- Foot height and control were tuned from the previous test pass.
+  - Feet can be locked near the ground plane with a small sole clearance.
+  - Low-speed contacts no longer disappear before they reach passive ball control.
+  - Ball rolling into the foot should be controllable / stoppable without requiring a large swing.
+- Stadium / field corner interference was addressed in `StadiumBuilder`.
+  - The stadium oval now expands enough to clear the rectangular pitch corners.
+  - This keeps the pitch size while reducing corner overlap with stadium boards / stands.
+- `PhysicalTouchTest` avoids creating extra ground when a real `FieldBuilder` field exists.
+  - This prevents the temporary test ground from visibly fighting the real pitch or field edge.
+
+### Current Intended Player Feel
+
+- Free control is the default state after receiving the ball.
+- The player can dribble, stop, nudge, and kick the ball without holding right trigger.
+- Holding / pressing right trigger does not freeze play by itself.
+- Right trigger only means: treat this touch as a pass attempt if the ball later reaches the teammate.
+- The match should only leave free-control possession when one of these happens:
+  - pass-intent ball reaches teammate,
+  - ball goes out of bounds,
+  - ball hits the invisible boundary,
+  - ball enters the opponent goal.
+
+### Known Issues / Needs Verification
+
+- Quest device validation is still required.
+  - The current changes compile, but physical feel must be checked in Quest Link / APK.
+  - Verify that ordinary touches remain responsive without right trigger.
+  - Verify that right trigger pass intent does not prematurely lock movement.
+- Pass judgement tuning is still rough.
+  - Current result uses stored pass power plus ball arrival speed near teammate.
+  - Thresholds may need adjustment after headset testing:
+    - `_teammatePassSlowPower`
+    - `_teammatePassFastPower`
+    - `_teammatePassArrivalRadius`
+    - `_teammatePassGoodScoreChance`
+- Direct shot feel still depends on physical impulse tuning.
+  - If shots feel weak or too strong, tune `PhysicalBallInteractor` impulse / lift / cooldown before changing match flow again.
+- Boundary and goal judgement are still coarse volumes.
+  - Opponent goal is checked as a simple field-local box.
+  - Boundary is checked by field extents and invisible cube walls.
+  - If corner or post cases feel unfair, replace with explicit goal-mouth trigger colliders later.
+- Goal-mouth boundary conflict is a current bug.
+  - Around the goal area, the goal judgement volume and field boundary / wall protection can overlap in a bad way.
+  - The ball can sink or get caught near the goal-mouth edge instead of cleanly resolving as score or miss.
+  - This likely needs explicit goal-mouth trigger colliders plus a boundary gap / special-case around both goals.
+- Out-of-bounds result text needs different labels by side.
+  - Left and right sideline exits should show an English out-of-bounds label, e.g. `OUT OF BOUNDS`.
+  - Front/back goal-line exits should show `JUST MISSED` rather than the same generic boundary text.
+  - Goal-line misses and sideline exits should remain separate result types even if both end the round.
+- Pass arrival has an intermittent ball reset bug.
+  - Sometimes after a pass is caught / reaches the teammate area, the ball refreshes to the exact field center.
+  - In that state the ball can appear half sunk into the pitch.
+  - Suspect conflict between physical possession, scripted teammate-shot setup, `BallController.SetPhysicalSimulation(...)`, and transform repositioning.
+  - Repro to capture: press right trigger for pass intent, get ball near teammate, observe whether ball teleports to center before the teammate-shot / result sequence.
+- `MatchFlowController` is becoming too large.
+  - Next cleanup should split physical possession judgement into a smaller helper component or service after behavior stabilizes.
+
+### Latest Verification
+
+- `dotnet build unity/Assembly-CSharp.csproj --no-restore` passed with 0 errors.
+- Remaining warnings are existing Unity obsolete API / serialized-field warnings and are not blocking this pass.
+
 ### Debug Checklist
 
 - Play Mode 中应出现 `LeftTrackedLeg` 和 `RightTrackedLeg`。

@@ -24,6 +24,8 @@ namespace SoccerBot
         [SerializeField] private float _pitchHalfLength = 9.0f;
         [Tooltip("Flat gap between the pitch edge and the first seating tier (the 'track').")]
         [SerializeField] private float _trackGap = 1.6f;
+        [Tooltip("Extra oval expansion so the rectangular pitch corners clear the stadium boards.")]
+        [SerializeField, Range(0.55f, 0.95f)] private float _cornerClearanceFill = 0.78f;
 
         [Header("Seating Bowl")]
         [SerializeField] private int   _segments  = 40;   // cubes per ring (higher = smoother oval)
@@ -90,6 +92,7 @@ namespace SoccerBot
 
             float baseRx = _pitchHalfWidth  + _trackGap;
             float baseRz = _pitchHalfLength + _trackGap;
+            ExpandOvalToClearPitchCorners(ref baseRx, ref baseRz);
 
             BuildWall(baseRx, baseRz);
             BuildBowl(baseRx, baseRz);
@@ -99,6 +102,23 @@ namespace SoccerBot
         }
 
         // ── Seating bowl: stacked elliptical rings of raked blocks ──
+
+        private void ExpandOvalToClearPitchCorners(ref float baseRx, ref float baseRz)
+        {
+            float wallRx = Mathf.Max(0.1f, baseRx - 0.3f);
+            float wallRz = Mathf.Max(0.1f, baseRz - 0.3f);
+            float occupancy =
+                (_pitchHalfWidth * _pitchHalfWidth) / (wallRx * wallRx) +
+                (_pitchHalfLength * _pitchHalfLength) / (wallRz * wallRz);
+
+            float targetFill = Mathf.Clamp(_cornerClearanceFill, 0.55f, 0.95f);
+            if (occupancy <= targetFill)
+                return;
+
+            float scale = Mathf.Sqrt(occupancy / targetFill);
+            baseRx *= scale;
+            baseRz *= scale;
+        }
 
         void BuildBowl(float baseRx, float baseRz)
         {

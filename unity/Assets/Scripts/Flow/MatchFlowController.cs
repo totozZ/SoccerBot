@@ -56,11 +56,20 @@ namespace SoccerBot
 
         [Header("Foot Contacts")]
         [SerializeField] private bool _acceptFootContacts = true;
+        [SerializeField] private bool _requireRightTriggerForFootShot = true;
         [SerializeField] private float _footReceivePerfectSpeed = 0.45f;
         [SerializeField] private float _footReceiveFailSpeed = 2.8f;
-        [SerializeField, Range(0f, 1f)] private float _minimumFootShotPower = 0.18f;
+        [SerializeField, Range(0f, 1f)] private float _minimumFootShotPower = 0.12f;
         [SerializeField, Range(0f, 1f)] private float _footShotSwingDirectionWeight = 0.65f;
         [SerializeField, Range(0f, 0.5f)] private float _footShotLift = 0.08f;
+
+        [Header("Player Pass / Shot Resolution")]
+        [SerializeField] private bool _enableTeammatePassByAim = true;
+        [SerializeField, Range(-1f, 1f)] private float _teammatePassAimDot = 0.82f;
+        [SerializeField] private float _teammatePassArrivalRadius = 1.15f;
+        [SerializeField, Range(0f, 1f)] private float _teammatePassSlowPower = 0.34f;
+        [SerializeField, Range(0f, 1f)] private float _teammatePassFastPower = 0.84f;
+        [SerializeField, Range(0f, 1f)] private float _teammatePassGoodScoreChance = 0.62f;
 
         [Header("Recovery Mash")]
         [SerializeField] private bool _enableRecoveryMash = true;
@@ -75,8 +84,6 @@ namespace SoccerBot
         [SerializeField, Range(4f, 60f)] private float _recoveryShakeFrequency = 32f;
 
         [Header("Power Routing")]
-        [SerializeField, Range(0.5f, 1f)] private float _scoreThreshold = 0.7f;
-        [SerializeField, Range(0.1f, 0.7f)] private float _missThreshold = 0.4f;
         [SerializeField, Range(0f, 0.3f)] private float _randomJitter = 0.10f;
 
         [Header("Teammate Shot Targets (world space)")]
@@ -84,6 +91,19 @@ namespace SoccerBot
         [SerializeField] private Transform _goalTargetMiss;
         [SerializeField] private Vector3 _goalTargetInPos = new(0f, 0.8f, 8.9f);
         [SerializeField] private Vector3 _goalTargetMissPos = new(3.5f, 0.5f, 8.6f);
+
+        [Header("Goal / Field Boundary")]
+        [SerializeField] private FieldBuilder _fieldBuilder;
+        [SerializeField] private bool _ensureMatchBoundaryWalls = true;
+        [SerializeField] private bool _showMatchBoundaryWalls = false;
+        [SerializeField] private float _matchBoundaryPadding = 0.45f;
+        [SerializeField] private float _matchBoundaryWallHeight = 1.8f;
+        [SerializeField] private float _matchBoundaryWallThickness = 0.14f;
+        [SerializeField] private float _ballOutOfBoundsMargin = 0.25f;
+        [SerializeField] private float _ballFallY = -0.75f;
+        [SerializeField] private float _opponentGoalWidth = 3.5f;
+        [SerializeField] private float _opponentGoalHeight = 1.55f;
+        [SerializeField] private float _opponentGoalDepth = 0.6f;
 
         [Header("Teammate Shot Animation")]
         [SerializeField] private float _shotPassToTeammate = 0.6f;
@@ -161,6 +181,13 @@ namespace SoccerBot
         private RectTransform _recoveryButtonRect;
         private TextMeshProUGUI _recoveryPromptLabel;
         private TextMeshProUGUI _recoveryMeterLabel;
+        private GameObject _matchBoundaryRoot;
+        private Coroutine _shotRoutine;
+        private bool _rallyResolved;
+        private bool _passJudgementActive;
+        private float _passJudgementPower01;
+        private float _passJudgementAimDot = 1f;
+        private float _passJudgementStartedAt = -999f;
         private readonly System.Collections.Generic.List<Image> _recoveryBorderImages = new();
         private readonly System.Collections.Generic.List<Transform> _backgroundNpcTransforms = new();
         private static readonly Color BlueTeamColor = new(0.1f, 0.3f, 0.9f, 1f);
@@ -171,6 +198,7 @@ namespace SoccerBot
             ApplyDemoOverrides();
             AutoResolveRefs();
             EnsureFarGoalTargets();
+            EnsureMatchBoundaryWalls();
             EnsureDemoScenePolish();
 
             if (_player != null)
@@ -229,8 +257,15 @@ namespace SoccerBot
                 StopCoroutine(_loop);
                 _loop = null;
             }
+            if (_shotRoutine != null)
+            {
+                StopCoroutine(_shotRoutine);
+                _shotRoutine = null;
+            }
 
             CurrentPhase = Phase.Idle;
+            _rallyResolved = false;
+            ResetPassJudgement();
             if (_player != null)
             {
                 _player.ShootingEnabled = false;
@@ -245,6 +280,9 @@ namespace SoccerBot
             _receptionPrompt?.Hide();
             _receptionTargetIndicator?.Hide();
             _scorePanel?.HideImmediate();
+            if (_robotTransform != null) _robotTransform.gameObject.SetActive(true);
+            if (_teammateTransform != null) _teammateTransform.gameObject.SetActive(true);
+            if (_opponentTransform != null) _opponentTransform.gameObject.SetActive(true);
             if (_ball != null && _robotTransform != null)
                 _ball.AttachTo(_robotTransform, _ballOffsetRobot);
         }
@@ -254,6 +292,7 @@ namespace SoccerBot
             if (_menuAction == null || !_menuAction.WasPressedThisFrame())
             {
                 UpdateAttackArrow();
+                GuardGoalAndBoundary();
             }
             else if (_mainMenu != null)
             {
@@ -287,6 +326,7 @@ namespace SoccerBot
                 if (go != null) _opponentTransform = go.transform;
             }
             if (_ball == null) _ball = FindFirstObjectByType<BallController>();
+            if (_fieldBuilder == null) _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
             if (_playerTransform != null)
             {
                 var pc = _playerTransform.GetComponent<FPSPlayerController>();
@@ -435,6 +475,81 @@ namespace SoccerBot
             {
                 _goalTargetMiss.position = _goalTargetMissPos;
             }
+        }
+
+        private void EnsureMatchBoundaryWalls()
+        {
+            if (!_ensureMatchBoundaryWalls)
+                return;
+
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+
+            Vector3 center = _fieldBuilder != null ? _fieldBuilder.transform.position : Vector3.zero;
+            Quaternion rotation = _fieldBuilder != null ? _fieldBuilder.transform.rotation : Quaternion.identity;
+            float width = GetFieldHalfWidth() * 2f + _matchBoundaryPadding * 2f;
+            float length = GetFieldHalfLength() * 2f + _matchBoundaryPadding * 2f;
+            float thickness = Mathf.Max(0.02f, _matchBoundaryWallThickness);
+            float height = Mathf.Max(0.2f, _matchBoundaryWallHeight);
+
+            if (_matchBoundaryRoot == null)
+                _matchBoundaryRoot = new GameObject("MatchFlowBoundary");
+
+            center.y += height * 0.5f;
+            _matchBoundaryRoot.SetActive(true);
+            _matchBoundaryRoot.transform.SetPositionAndRotation(center, rotation);
+
+            EnsureMatchBoundaryWall("BackWall", new Vector3(0f, 0f, -length * 0.5f), new Vector3(width + thickness * 2f, height, thickness));
+            EnsureMatchBoundaryWall("FrontWall", new Vector3(0f, 0f, length * 0.5f), new Vector3(width + thickness * 2f, height, thickness));
+            EnsureMatchBoundaryWall("LeftWall", new Vector3(-width * 0.5f, 0f, 0f), new Vector3(thickness, height, length));
+            EnsureMatchBoundaryWall("RightWall", new Vector3(width * 0.5f, 0f, 0f), new Vector3(thickness, height, length));
+        }
+
+        private void EnsureMatchBoundaryWall(string wallName, Vector3 localPosition, Vector3 localScale)
+        {
+            Transform wall = _matchBoundaryRoot.transform.Find(wallName);
+            if (wall == null)
+            {
+                GameObject wallGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                wallGo.name = wallName;
+                wallGo.layer = 2;
+                wallGo.transform.SetParent(_matchBoundaryRoot.transform, false);
+
+                var reporter = wallGo.GetComponent<MatchBoundaryWall>();
+                if (reporter == null)
+                    reporter = wallGo.AddComponent<MatchBoundaryWall>();
+                reporter.Configure(this);
+
+                Renderer renderer = wallGo.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.material.color = new Color(0.08f, 0.22f, 0.35f, 0.35f);
+                    renderer.enabled = _showMatchBoundaryWalls;
+                }
+
+                wall = wallGo.transform;
+            }
+            else
+            {
+                var reporter = wall.GetComponent<MatchBoundaryWall>();
+                if (reporter == null)
+                    reporter = wall.gameObject.AddComponent<MatchBoundaryWall>();
+                reporter.Configure(this);
+            }
+
+            if (wall == null)
+            {
+                Debug.LogWarning($"[MatchFlow] Boundary wall '{wallName}' could not be created.");
+                return;
+            }
+
+            wall.localPosition = localPosition;
+            wall.localRotation = Quaternion.identity;
+            wall.localScale = localScale;
+
+            Renderer existingRenderer = wall.GetComponent<Renderer>();
+            if (existingRenderer != null)
+                existingRenderer.enabled = _showMatchBoundaryWalls;
         }
 
         private void EnsureDemoScenePolish()
@@ -866,6 +981,9 @@ namespace SoccerBot
         private IEnumerator DoSetup()
         {
             CurrentPhase = Phase.Setup;
+            _rallyResolved = false;
+            ResetPassJudgement();
+            EnsureMatchBoundaryWalls();
             if (_player != null)
             {
                 _player.ShootingEnabled = false;
@@ -1030,6 +1148,160 @@ namespace SoccerBot
             yield return new WaitForSeconds(_cooldownDuration);
         }
 
+        public void NotifyBoundaryHit(BallController ball)
+        {
+            if (ball == null || _ball == null || ball != _ball)
+                return;
+
+            ResolveBallOutOfPlay("[MatchFlow] Ball hit field boundary.");
+        }
+
+        private void GuardGoalAndBoundary()
+        {
+            if (!_isMatchRunning || _rallyResolved || _ball == null)
+                return;
+            if (CurrentPhase != Phase.Possession && CurrentPhase != Phase.Shot)
+                return;
+
+            if (CurrentPhase == Phase.Possession &&
+                _passJudgementActive &&
+                Time.time - _passJudgementStartedAt > 6f)
+            {
+                ResetPassJudgement();
+            }
+
+            if (IsBallInOpponentGoal())
+            {
+                ResolveSelfGoal();
+                return;
+            }
+
+            if (CurrentPhase == Phase.Possession && _passJudgementActive && IsBallNearTeammate(out float teammateDistance))
+            {
+                ResolveTeammatePassArrival(teammateDistance);
+                return;
+            }
+
+            if (IsBallOutOfBounds())
+                ResolveBallOutOfPlay("[MatchFlow] Ball left field bounds.");
+        }
+
+        private bool IsBallInOpponentGoal()
+        {
+            if (_ball == null)
+                return false;
+
+            Vector3 local = GetFieldLocalBallPosition();
+            float halfLength = GetFieldHalfLength();
+            float halfGoalWidth = Mathf.Max(0.1f, _opponentGoalWidth * 0.5f);
+            float goalDepth = Mathf.Max(0.05f, _opponentGoalDepth);
+            float goalHeight = Mathf.Max(0.1f, _opponentGoalHeight);
+
+            return local.z >= halfLength - goalDepth
+                && local.z <= halfLength + goalDepth + _ballOutOfBoundsMargin
+                && Mathf.Abs(local.x) <= halfGoalWidth
+                && local.y >= -0.05f
+                && local.y <= goalHeight;
+        }
+
+        private bool IsBallOutOfBounds()
+        {
+            if (_ball == null)
+                return false;
+
+            Vector3 local = GetFieldLocalBallPosition();
+            float halfWidth = GetFieldHalfWidth() + _ballOutOfBoundsMargin;
+            float halfLength = GetFieldHalfLength() + _ballOutOfBoundsMargin;
+
+            return Mathf.Abs(local.x) > halfWidth
+                || local.z > halfLength
+                || local.z < -halfLength
+                || _ball.transform.position.y < _ballFallY;
+        }
+
+        private Vector3 GetFieldLocalBallPosition()
+        {
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+
+            if (_fieldBuilder != null)
+                return _fieldBuilder.transform.InverseTransformPoint(_ball.transform.position);
+
+            return _ball.transform.position;
+        }
+
+        private float GetFieldHalfWidth()
+        {
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+            return _fieldBuilder != null ? Mathf.Max(0.5f, _fieldBuilder._halfWidth) : 6f;
+        }
+
+        private float GetFieldHalfLength()
+        {
+            if (_fieldBuilder == null)
+                _fieldBuilder = FindFirstObjectByType<FieldBuilder>(FindObjectsInactive.Include);
+            return _fieldBuilder != null ? Mathf.Max(0.5f, _fieldBuilder._halfLength) : 9f;
+        }
+
+        private void ResolveSelfGoal()
+        {
+            if (_rallyResolved)
+                return;
+
+            StopActiveShotRoutine();
+            ResetPassJudgement();
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null) _ball.SetPhysicalSimulation(false, true);
+            if (_scorePanel != null && _scoreSuccessData != null) _scorePanel.Show(_scoreSuccessData);
+            if (_scoreBoard != null) _scoreBoard.Record(ScenarioOutcome.Score);
+            if (_teammateCelebrates && _teammateTransform != null)
+                StartCoroutine(CelebrationBounce(_teammateTransform));
+
+            Debug.Log("[MatchFlow] Player shot scored in opponent goal.");
+            HandleShotResolved();
+        }
+
+        private void ResolveBallOutOfPlay(string reason)
+        {
+            if (!_isMatchRunning || _rallyResolved)
+                return;
+            if (CurrentPhase == Phase.Idle || CurrentPhase == Phase.Setup || CurrentPhase == Phase.Cooldown)
+                return;
+
+            StopActiveShotRoutine();
+            ResetPassJudgement();
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null) _ball.SetPhysicalSimulation(false, true);
+
+            if (_scorePanel != null && _shotMissedData != null) _scorePanel.Show(_shotMissedData);
+            if (_scoreBoard != null) _scoreBoard.Record(ScenarioOutcome.Missed);
+
+            Debug.Log(reason);
+            HandleShotResolved();
+        }
+
+        private void StopActiveShotRoutine()
+        {
+            if (_shotRoutine == null)
+                return;
+
+            StopCoroutine(_shotRoutine);
+            _shotRoutine = null;
+        }
+
         private IEnumerator DoRecoveryBattle()
         {
             CurrentPhase = Phase.Recovery;
@@ -1123,13 +1395,18 @@ namespace SoccerBot
 
             if (CurrentPhase == Phase.Possession)
             {
-                if (data.Power01 < _minimumFootShotPower)
-                    return false;
-
                 Vector3 direction = BuildFootShotDirection(data);
-                HandlePlayerShot(data.Power01, direction);
-                Debug.Log($"[MatchFlow] Foot shot ({data.Foot}) power={data.Power01:0.00} speed={data.ContactSpeed:0.00} triggerIntent={data.ShootIntentHeld}");
-                return true;
+                if (!_requireRightTriggerForFootShot || data.ShootIntentHeld)
+                {
+                    float passAimDot = 1f;
+                    float passArrivalDistance = float.MaxValue;
+                    if (_enableTeammatePassByAim)
+                        IsAimedAtTeammate(direction, out passAimDot, out passArrivalDistance);
+                    BeginPassJudgement(data.Power01, passAimDot);
+                    Debug.Log($"[MatchFlow] Foot pass intent ({data.Foot}) power={data.Power01:0.00} speed={data.ContactSpeed:0.00} aimDot={passAimDot:0.00} expectedArrival={passArrivalDistance:0.00}");
+                }
+
+                return false;
             }
 
             return false;
@@ -1202,6 +1479,142 @@ namespace SoccerBot
                 direction = aim;
             direction.Normalize();
             return direction;
+        }
+
+        private bool IsAimedAtTeammate(Vector3 shotDirection, out float aimDot, out float arrivalDistance)
+        {
+            aimDot = -1f;
+            arrivalDistance = float.MaxValue;
+            if (_teammateTransform == null || _ball == null)
+                return false;
+
+            Vector3 start = _ball.transform.position;
+            Vector3 toTeammate = Flatten(_teammateTransform.position - start);
+            Vector3 flatShot = Flatten(shotDirection);
+            if (toTeammate.sqrMagnitude < 0.0001f || flatShot.sqrMagnitude < 0.0001f)
+                return false;
+
+            Vector3 teammateDir = toTeammate.normalized;
+            Vector3 shotDir = flatShot.normalized;
+            aimDot = Vector3.Dot(shotDir, teammateDir);
+
+            float projectedDistance = Mathf.Max(0f, Vector3.Dot(toTeammate, shotDir));
+            Vector3 closestOnShotLine = start + shotDir * projectedDistance;
+            arrivalDistance = Flatten(_teammateTransform.position - closestOnShotLine).magnitude;
+
+            return aimDot >= _teammatePassAimDot || arrivalDistance <= _teammatePassArrivalRadius;
+        }
+
+        private void BeginPassJudgement(float power01, float aimDot)
+        {
+            if (!_isMatchRunning || CurrentPhase != Phase.Possession || _rallyResolved)
+                return;
+            if (power01 < _minimumFootShotPower)
+                return;
+
+            _passJudgementActive = true;
+            _passJudgementPower01 = Mathf.Clamp01(power01);
+            _passJudgementAimDot = Mathf.Clamp(aimDot, -1f, 1f);
+            _passJudgementStartedAt = Time.time;
+        }
+
+        private void ResetPassJudgement()
+        {
+            _passJudgementActive = false;
+            _passJudgementPower01 = 0f;
+            _passJudgementAimDot = 1f;
+            _passJudgementStartedAt = -999f;
+        }
+
+        private bool IsBallNearTeammate(out float distance)
+        {
+            distance = float.MaxValue;
+            if (_ball == null || _teammateTransform == null)
+                return false;
+
+            distance = Flatten(_ball.transform.position - _teammateTransform.position).magnitude;
+            return distance <= _teammatePassArrivalRadius;
+        }
+
+        private float GetBallHorizontalSpeed()
+        {
+            if (_ball == null)
+                return 0f;
+
+            Rigidbody body = _ball.GetComponent<Rigidbody>();
+            if (body == null)
+                return 0f;
+
+            Vector3 velocity = body.linearVelocity;
+            velocity.y = 0f;
+            return velocity.magnitude;
+        }
+
+        private void ResolveTeammatePassArrival(float arrivalDistance)
+        {
+            if (!_isMatchRunning || CurrentPhase != Phase.Possession || _rallyResolved)
+                return;
+
+            float passPower01 = _passJudgementPower01;
+            float passAimDot = _passJudgementAimDot;
+            ResetPassJudgement();
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null) _ball.Detach();
+
+            float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
+            float arrivalSpeed01 = Mathf.InverseLerp(0.6f, 5.5f, GetBallHorizontalSpeed());
+            float effectivePower = Mathf.Clamp01(
+                passPower01 * 0.55f +
+                arrivalSpeed01 * 0.45f +
+                receiveBias +
+                UnityEngine.Random.Range(-_randomJitter, _randomJitter));
+            _scorePanel?.SetFirstTouchContext(_receiveQuality, receiveBias);
+            _receptionPrompt?.ShowShotBias(receiveBias);
+
+            bool offTarget = arrivalDistance > _teammatePassArrivalRadius;
+            if (offTarget || effectivePower >= _teammatePassFastPower)
+            {
+                StartShotRoutine(DoTeammateShot(GetMissTarget(), _shotMissedData));
+                return;
+            }
+
+            if (effectivePower < _teammatePassSlowPower)
+            {
+                PlayInterceptedScenario();
+                return;
+            }
+
+            bool scored = UnityEngine.Random.value <= _teammatePassGoodScoreChance * Mathf.Clamp01(0.55f + passAimDot * 0.45f);
+            StartShotRoutine(DoTeammateShot(scored ? GetScoreTarget() : GetMissTarget(), scored ? _scoreSuccessData : _shotMissedData));
+        }
+
+        private Vector3 GetScoreTarget()
+        {
+            return _goalTargetIn != null ? _goalTargetIn.position : _goalTargetInPos;
+        }
+
+        private Vector3 GetMissTarget()
+        {
+            return _goalTargetMiss != null ? _goalTargetMiss.position : _goalTargetMissPos;
+        }
+
+        private void StartShotRoutine(IEnumerator routine)
+        {
+            if (_shotRoutine != null)
+                StopCoroutine(_shotRoutine);
+            _shotRoutine = StartCoroutine(routine);
+        }
+
+        private void PlayInterceptedScenario()
+        {
+            if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
+            if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(0);
         }
 
         private void HandleRecoveryPress()
@@ -1498,36 +1911,8 @@ namespace SoccerBot
         private void HandlePlayerShot(float power01, Vector3 direction)
         {
             if (!_isMatchRunning || CurrentPhase != Phase.Possession) return;
-
-            CurrentPhase = Phase.Shot;
-            if (_player != null)
-            {
-                _player.ShootingEnabled = false;
-                _player.MovementEnabled = false;
-                _player.ReceptionEnabled = false;
-            }
-            if (_ball != null) _ball.Detach();
-
-            float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
-            float effectivePower = Mathf.Clamp01(power01 + receiveBias + UnityEngine.Random.Range(-_randomJitter, _randomJitter));
-            _scorePanel?.SetFirstTouchContext(_receiveQuality, receiveBias);
-            _receptionPrompt?.ShowShotBias(receiveBias);
-
-            if (effectivePower >= _scoreThreshold)
-            {
-                Vector3 target = _goalTargetIn != null ? _goalTargetIn.position : _goalTargetInPos;
-                StartCoroutine(DoTeammateShot(target, _scoreSuccessData));
-            }
-            else if (effectivePower >= _missThreshold)
-            {
-                Vector3 target = _goalTargetMiss != null ? _goalTargetMiss.position : _goalTargetMissPos;
-                StartCoroutine(DoTeammateShot(target, _shotMissedData));
-            }
-            else
-            {
-                if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
-                if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(0);
-            }
+            IsAimedAtTeammate(direction, out float aimDot, out _);
+            BeginPassJudgement(power01, aimDot);
         }
 
         private IEnumerator DoTeammateShot(Vector3 targetWorld, Scenario panelData)
@@ -1592,6 +1977,7 @@ namespace SoccerBot
             if (_teammateCelebrates && panelData != null && panelData.outcome == ScenarioOutcome.Score && _teammateTransform != null)
                 StartCoroutine(CelebrationBounce(_teammateTransform));
 
+            _shotRoutine = null;
             HandleShotResolved();
         }
 
@@ -1633,12 +2019,40 @@ namespace SoccerBot
         private void HandleShotResolved()
         {
             if (CurrentPhase != Phase.Shot) return;
+            _rallyResolved = true;
             CurrentPhase = Phase.Score;
         }
 
         private void HandleScenarioComplete(Scenario s)
         {
             HandleShotResolved();
+        }
+    }
+
+    [DisallowMultipleComponent]
+    public class MatchBoundaryWall : MonoBehaviour
+    {
+        private MatchFlowController _owner;
+
+        public void Configure(MatchFlowController owner)
+        {
+            _owner = owner;
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            Notify(collision.rigidbody != null ? collision.rigidbody.GetComponent<BallController>() : null);
+        }
+
+        private void OnTriggerEnter(Collider other)
+        {
+            Notify(other != null ? other.GetComponentInParent<BallController>() : null);
+        }
+
+        private void Notify(BallController ball)
+        {
+            if (_owner != null && ball != null)
+                _owner.NotifyBoundaryHit(ball);
         }
     }
 }
