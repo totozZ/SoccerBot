@@ -1,6 +1,6 @@
 ---
 name: plan-sync
-description: 扫描代码 + git log + 当前文件状态，自动更新 PLAN.md 的 TODO 勾选、进度总览表和「立即下一步」段落。每个开发节点结束（完成 P5/P6/P7…）后跑一次，省得手动维护文档。
+description: 扫描代码、git diff、git log 和现有 docs，自动同步 SoccerBot 的进度入口：docs/PROJECT_STATUS.md、根目录 PLAN.md，并在需要时更新 README.md 的状态链接。每个功能或 bug 变动结束后跑一次，不需要用户额外提醒。
 user-invocable: true
 allowed-tools:
   - Read
@@ -10,89 +10,99 @@ allowed-tools:
   - Bash
 ---
 
-# /plan-sync — 同步 PLAN.md 与真实代码状态
+# /plan-sync - 同步进度入口与功能/Bug 总览
 
-SoccerBot 项目专用。读真实状态 → 改 [PLAN.md](PLAN.md) → 顺手把 [README.md](README.md) 的「当前状态」一行也更新掉。
+SoccerBot 项目专用。目标是让根目录 [PLAN.md](../../PLAN.md) 保持极简，让详细状态集中在 [docs/PROJECT_STATUS.md](../../docs/PROJECT_STATUS.md)。
 
-参数：`$ARGUMENTS`（一般为空；可选 `--dry-run` 只输出 diff 不改文件）
+参数：`$ARGUMENTS`
+- 空：实际更新文档。
+- `--dry-run`：只输出会更新的摘要，不改文件。
 
----
+## 文档职责
 
-## 收集真实状态（并行）
-
-1. **git log**：`git log --oneline -20`，拿最近 20 条 commit。注意中文 commit message。
-2. **git status**：当前工作区是否有未提交改动。
-3. **关键脚本是否存在**（用 Glob，每个独立判断「✅ 已完成 / ❌ 未做」）：
-   - `unity/Assets/Scripts/Scenario/Scenario.cs`
-   - `unity/Assets/Scripts/Scenario/ScenarioPlayer.cs`
-   - `unity/Assets/Scripts/Scenario/ScenarioTrigger.cs`
-   - `unity/Assets/Scripts/UI/ScorePanel.cs`
-   - `unity/Assets/Scripts/XR/XRSetup.cs`（或任何 `XR/` 下的脚本）
-   - `unity/Assets/Editor/BuildAndroid.cs`（quest-build skill 留下的）
-4. **场景**：`unity/Assets/Scenes/Main.unity` 是否存在。
-5. **剧本资产**：`unity/Assets/Scenarios/*.asset` 数量（应该 ≥ 3）。
-6. **Quest 部署痕迹**：
-   - `unity/ProjectSettings/ProjectSettings.asset` 里 `targetGroup: 7`（Android）下的 XR 配置
-   - `build/SoccerBot.apk` 是否存在 + 修改时间
-
----
-
-## 推断 Phase 完成状态
-
-按 [PLAN.md](PLAN.md) 的 P1–P9 逐个判定：
-
-| Phase | 判定规则 |
+| 文档 | 职责 |
 |---|---|
-| P1 重建 Main.unity | `Scenes/Main.unity` 存在 |
-| P2 队友/对手 | `Main.unity` grep `Teammate` 和 `Opponent` 都命中 |
-| P3 剧本系统代码 | Scenario.cs / Player.cs / Trigger.cs 三个都在 |
-| P4 剧本资产 + 触发 | `Scenarios/*.asset` ≥ 3 |
-| P5 评分 UI | `UI/ScorePanel.cs` 存在 |
-| P5.1 球起点跟随机器人 | grep `ScenarioPlayer.cs` 是否引用 `transform.position` 做平移偏移；不确定就标 `?` |
-| P6 XR Origin | `XR/` 目录有脚本 **或** Main.unity grep `XROrigin` 命中 |
-| P7 APK 构建 | `build/SoccerBot.apk` 存在 |
-| P8 性能优化 | git log 里出现「性能 / perf / fps / Quest 优化」关键词 |
-| P9 演示视频 | git log 里出现「视频 / video / demo」关键词；不确定标 `?` |
+| `PLAN.md` | 极简进度板：当前结论、进度表、下一步、文档入口 |
+| `docs/PROJECT_STATUS.md` | 功能、未完成项、已修 bug、未修/待复测 bug 的总入口 |
+| `docs/*.md` 详细文档 | 玩法、美术、Quest 脚部交互等具体设计和实现记录 |
+| `docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md` | 旧长计划归档，只读，不再作为活跃计划 |
+| `README.md` | 对外说明，只在入口链接或高层状态过期时更新 |
 
-判定不确定时**标 `?` 而不是猜**。然后口头问用户该项是不是已完成，再写。
+## 收集真实状态
 
----
+并行读取：
 
-## 改文件
+1. `git status --short`：识别本轮是否有未提交代码/文档改动。
+2. `git diff HEAD` + `git diff --staged`：提炼本轮新增功能、行为变化、bug 修复。
+3. `git log --oneline -12`：参考最近提交，但不要只凭 commit message 判断完成。
+4. 关键文档：
+   - `docs/PROJECT_STATUS.md`
+   - `PLAN.md`
+   - `README.md`
+   - 和本轮改动相关的详细文档。
+5. 关键代码证据：
+   - 改动脚本清单来自 `git diff --name-only HEAD`
+   - 对涉及功能状态的 `.cs` 文件，读 diff 区块或文件关键段落。
 
-### PLAN.md 三处必改
+## 更新规则
 
-1. **顶部 TODO 列表**（第 5–14 行）：把判定为完成的换成 `[x]`，未完成保持 `[ ]`。
-2. **「当前进度总览」表格**：状态列改 ✅ / ⬜ / ⚠️。
-3. **「立即下一步」段落**：删旧内容，写当前最靠前的未完成 Phase 是什么、卡在哪、下一动作是什么。简短 3–5 行。
+### `docs/PROJECT_STATUS.md`
 
-### PLAN.md 顶部版本号 + 日期
+这是主文档。按真实状态更新四个区域：
 
-第 18 行那种 `> 版本: vX.Y | 日期: YYYY-MM-DD | 状态: ...`：
-- 日期换成今天（从环境里的当前日期，不是猜）
-- 版本号小步递增（v4.1 → v4.2）
-- 状态用一句话总结
+1. `已完成 / 已接入功能`
+   - 只有代码、场景、资源或文档证据明确时才写“完成”。
+   - 如果只接了骨架或还需要真机验证，写“已接入”“完成一版”“待复测”，不要写满完成。
 
-### README.md 一行
+2. `未完成 / 进行中功能`
+   - 新增待办或阶段性缺口写在这里。
+   - 已完成的项从这里移到已完成区，或改为“待复测”风险。
 
-倒数第二段「当前状态（YYYY-MM-DD）」那一行同步更新。日期 + 一句话。其它别动。
+3. `已修 Bug`
+   - 只有有明确修复证据时才移动到这里。
+   - 写清症状和修复结果，不长篇解释。
 
----
+4. `未修 / 待复测 Bug 与风险`
+   - 新发现 bug、真机未验证、性能未知、体验不稳都放这里。
+   - 如果 bug 只在旧文档中出现、近期文档显示已改善但未 APK 验证，状态写“待复核”。
+
+每一行都要有一个详情链接，指向对应详细文档或归档。
+
+### `PLAN.md`
+
+只做极简同步：
+
+1. 更新 `更新时间`。
+2. 更新 `当前结论` 里的主线状态和当前优先级。
+3. 更新 `进度表` 里对应行的状态。
+4. 更新 `下一步`，保持 3-5 条，不放长设计。
+
+不要把架构图、测试清单、长方案、风险登记重新塞回根 `PLAN.md`。
+
+### `README.md`
+
+仅在以下情况更新：
+
+- 当前进度表和 `PROJECT_STATUS.md` 明显不一致。
+- 入口链接缺失或过期。
+- 快速开始或关键脚本列表已和真实项目不符。
+
+## 不确定时
+
+- 不要猜完成状态。
+- 用“待复测”“待确认”“已接入但未验证”表达不确定。
+- 如果需要用户判断才知道是否算完成，列出问题并停在摘要里，不擅自勾完成。
 
 ## 输出
 
-改完后：
-1. `git diff PLAN.md README.md` 给用户看一眼。
-2. **不要自动 commit**。让用户自己决定。
-3. 如果有 `?` 标记的项，列出来问用户。
-
-`--dry-run` 模式：不改文件，只输出会改成什么样的摘要（哪些 phase 状态翻了、版本号换成什么、立即下一步段落新写什么）。
-
----
+1. 汇总改了哪些文档。
+2. 列出状态变化：哪些功能变完成、哪些 bug 移动到已修、哪些新增为待复测。
+3. 输出相关 diff 摘要。
+4. 不自动 commit。
 
 ## 不要做
 
-- 不要发明 Phase。PLAN.md 已有的 P1–P9 是固定的，新增需求让用户自己加。
-- 不要重写「演示故事板」「锁定的方向决策」「数据流」「未来展望」这些静态段落——它们与代码状态无关。
-- 不要碰 [memory/](memory/) 里的文件，那是 Claude 的长期记忆，归 auto-memory 管。
-- 没有真实证据就别勾 `[x]`。宁可标 `?` 问一句。
+- 不改 `docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md`，除非用户明确要求补归档说明。
+- 不把 `PLAN.md` 恢复成长文档。
+- 不碰 `memory/`。
+- 不为了让进度好看而把“待真机验证”的项目写成完成。
