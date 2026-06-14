@@ -13,6 +13,15 @@ namespace SoccerBot
     {
         public enum Phase { Idle, Setup, Pass, Recovery, Possession, Shot, Score, Cooldown }
 
+        public event Action<Phase> PhaseChanged;
+        public event Action<Vector3, Vector3, float> PassStarted;
+        public event Action<float, float, bool> ReceiveResolved;
+        public event Action RecoveryTriggered;
+        public event Action<bool> RecoveryResolved;
+        public event Action<float, Vector3> ShotAttempted;
+        public event Action<FootContactData> FootContactRecorded;
+        public event Action<Scenario, string> RoundResolved;
+
         [Header("Scene References")]
         [SerializeField] private Transform _robotTransform;
         [SerializeField] private Transform _playerTransform;
@@ -162,7 +171,19 @@ namespace SoccerBot
         [SerializeField] private Scenario _scoreSuccessData;
         [SerializeField] private Scenario _shotMissedData;
 
-        public Phase CurrentPhase { get; private set; } = Phase.Idle;
+        private Phase _currentPhase = Phase.Idle;
+        public Phase CurrentPhase
+        {
+            get => _currentPhase;
+            private set
+            {
+                if (_currentPhase == value)
+                    return;
+
+                _currentPhase = value;
+                PhaseChanged?.Invoke(_currentPhase);
+            }
+        }
         public enum BoundaryExitKind { Unknown, Sideline, GoalLine, Fall }
 
         private Coroutine _loop;
@@ -204,6 +225,7 @@ namespace SoccerBot
         {
             ApplyDemoOverrides();
             AutoResolveRefs();
+            EnsureAICoachRuntime();
             EnsureFarGoalTargets();
             EnsureMatchBoundaryWalls();
             EnsureDemoScenePolish();
@@ -395,6 +417,19 @@ namespace SoccerBot
             }
             _receptionTargetIndicator.Hide();
             if (_mainMenu == null) _mainMenu = FindFirstObjectByType<MainMenuPanel>(FindObjectsInactive.Include);
+        }
+
+        private void EnsureAICoachRuntime()
+        {
+            AICoachClient coachClient = FindAnyObjectByType<AICoachClient>(FindObjectsInactive.Include);
+            if (coachClient == null)
+                coachClient = gameObject.AddComponent<AICoachClient>();
+
+            GameEventRecorder recorder = FindAnyObjectByType<GameEventRecorder>(FindObjectsInactive.Include);
+            if (recorder == null)
+                recorder = gameObject.AddComponent<GameEventRecorder>();
+
+            recorder.Configure(this, _ball, _scorePanel, coachClient);
         }
 
         private void PlayWhistle()
@@ -1107,6 +1142,7 @@ namespace SoccerBot
             ResetReceptionState(0f);
             _currentPassStart = startPos;
             _currentPassEnd = endPos;
+            PassStarted?.Invoke(startPos, endPos, _passFlightTime);
             _receptionTargetIndicator?.Show(endPos);
             _receptionPrompt?.ShowPassProgress(
                 _passProgress01,
@@ -1152,6 +1188,7 @@ namespace SoccerBot
             if (!_receiveAttempted)
             {
                 _receiveQuality = 0.12f;
+                ReceiveResolved?.Invoke(_receiveQuality, Mathf.Abs(1f - _receivePerfect01), false);
                 _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, false, 1.5f);
                 _receptionTargetIndicator?.ShowFeedback(_receiveQuality, false);
                 Debug.Log("[MatchFlow] Receive missed: no player input during pass.");
@@ -1165,6 +1202,7 @@ namespace SoccerBot
             {
                 Debug.Log($"[MatchFlow] Poor first touch ({_receiveQuality:0.00}); opponent wins the ball.");
                 _receptionPrompt?.ShowRecovery();
+                RecoveryTriggered?.Invoke();
                 if (_enableRecoveryMash)
                 {
                     yield return DoRecoveryBattle();
@@ -1370,6 +1408,7 @@ namespace SoccerBot
 
             Debug.Log("[MatchFlow] Player shot scored in opponent goal.");
             HandleShotResolved();
+            NotifyRoundResolved(_scoreSuccessData, null);
         }
 
         private void ResolveBallOutOfPlay(BoundaryExitKind exitKind, string reason)
@@ -1396,6 +1435,7 @@ namespace SoccerBot
 
             Debug.Log($"{reason} kind={exitKind}");
             HandleShotResolved();
+            NotifyRoundResolved(_shotMissedData, label);
         }
 
         private void StopActiveShotRoutine()
@@ -1462,11 +1502,13 @@ namespace SoccerBot
             {
                 yield return PlayRecoverySuccess(backDir);
                 _receiveQuality = Mathf.Max(_minimumPossessionReceiveQuality + 0.18f, 0.45f);
+                RecoveryResolved?.Invoke(true);
                 CurrentPhase = Phase.Possession;
             }
             else
             {
                 yield return PlayRecoveryFailure(backDir);
+                RecoveryResolved?.Invoke(false);
                 ResolveRecoveryFailure();
             }
 
@@ -1477,6 +1519,8 @@ namespace SoccerBot
         {
             if (!_acceptFootContacts || !_isMatchRunning)
                 return false;
+
+            FootContactRecorded?.Invoke(data);
 
             if (CurrentPhase == Phase.Recovery)
             {
@@ -1491,6 +1535,7 @@ namespace SoccerBot
 
                 _receiveAttempted = true;
                 _receiveQuality = EvaluateFootReceiveQuality(data);
+                ReceiveResolved?.Invoke(_receiveQuality, Mathf.Abs(_passProgress01 - _receivePerfect01), true);
                 if (_player != null) _player.ReceptionEnabled = false;
                 _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, true, 1.2f);
                 _receptionTargetIndicator?.ShowFeedback(_receiveQuality, true);
@@ -1508,6 +1553,7 @@ namespace SoccerBot
                     if (_enableTeammatePassByAim)
                         IsAimedAtTeammate(direction, out passAimDot, out passArrivalDistance);
                     BeginPassJudgement(data.Power01, passAimDot);
+                    ShotAttempted?.Invoke(data.Power01, direction);
                     Debug.Log($"[MatchFlow] Foot pass intent ({data.Foot}) power={data.Power01:0.00} speed={data.ContactSpeed:0.00} aimDot={passAimDot:0.00} expectedArrival={passArrivalDistance:0.00}");
                 }
 
@@ -1620,6 +1666,7 @@ namespace SoccerBot
 
             _receiveAttempted = true;
             _receiveQuality = EvaluateReceiveQuality(direction);
+            ReceiveResolved?.Invoke(_receiveQuality, Mathf.Abs(_passProgress01 - _receivePerfect01), false);
             if (_player != null) _player.ReceptionEnabled = false;
             _receptionPrompt?.ShowReceiveFeedback(_receiveQuality, true, 1.2f);
             _receptionTargetIndicator?.ShowFeedback(_receiveQuality, true);
@@ -2107,6 +2154,7 @@ namespace SoccerBot
             if (!_isMatchRunning || CurrentPhase != Phase.Possession) return;
             IsAimedAtTeammate(direction, out float aimDot, out _);
             BeginPassJudgement(power01, aimDot);
+            ShotAttempted?.Invoke(power01, direction);
         }
 
         private IEnumerator DoTeammateShot(Vector3 targetWorld, Scenario panelData)
@@ -2173,6 +2221,7 @@ namespace SoccerBot
 
             _shotRoutine = null;
             HandleShotResolved();
+            NotifyRoundResolved(panelData, null);
         }
 
         private IEnumerator CelebrationBounce(Transform npc)
@@ -2220,6 +2269,12 @@ namespace SoccerBot
         private void HandleScenarioComplete(Scenario s)
         {
             HandleShotResolved();
+            NotifyRoundResolved(s, null);
+        }
+
+        private void NotifyRoundResolved(Scenario scenario, string outcomeLabelOverride)
+        {
+            RoundResolved?.Invoke(scenario, outcomeLabelOverride);
         }
     }
 

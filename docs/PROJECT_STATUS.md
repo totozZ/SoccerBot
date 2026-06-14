@@ -16,8 +16,18 @@
 | 项 | 状态 | 简短说明 | 详情 |
 |---|---|---|---|
 | 项目主线 | 可玩原型已跑通 | PC / Quest 基础闭环已经形成：来球、接球、反抢、持球、射门、回放、评分 | [README](../README.md) |
-| 当前重点 | 脚部触球 + 演示画面 | 先把 Quest 手柄脚部物理触球调稳，再做黄昏球场和进球反馈 | [PLAN](../PLAN.md) |
+| 当前重点 | P0 双主线 | 简易场上 AI 状态机与 Quest 脚部 hitbox / 触球调校并列最高优先级 | [PLAN](../PLAN.md) |
 | 主要风险 | Quest 真机体验 | 物理脚感、帧率、UI 可读性和 APK 复测仍是本期最大不确定性 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
+
+## 优先级队列
+
+| 优先级 | 项 | 状态 | 简短说明 |
+|---|---|---|---|
+| P0 | 简易场上 AI 状态机 | 未完成 | 队友、对手、守门员需要至少有轻量状态机，能对玩家、球、传球路线和射门轨迹作出反应 |
+| P0 | Quest 脚部 hitbox / 触球调校 | 进行中 | 让可见脚部模型、碰撞体和物理触球结果对齐，减少“看见碰到但没触发” |
+| P1 | LLM AI Coach 训练闭环 | 已接入 MVP | 回合数据记录、TrainingSummaryJson、本地 HTTP 分析、ScorePanel AI 反馈和离线 fallback |
+| P2 | 演示画面优化 | 进行中 | 黄昏天空、草坪材质、进球反馈、看台氛围 |
+| P3 | 其他事项 | 排队 | 性能专项、演示视频、智能足球、真实空间联动等 |
 
 ## 已完成 / 已接入功能
 
@@ -36,18 +46,21 @@
 | 演示画面基础链路 | 已接入 | 程序化球场、看台、灯光、Bloom/Vignette、观众、纸屑和进球反馈骨架已存在 | [演示画面优化](DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
 | Quest 手柄脚部原型 | 原型已接入 | 手柄位姿驱动左右脚、脚部碰撞区、物理球交互、调参/测试模式已接入 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 | 边界与球门判定 | 已接入 | 物理边界、球门口缺口、`OpponentGoalTrigger`、出界/射偏/进球文本已接入 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
+| LLM AI Coach 训练闭环 | P1 / 已接入 MVP | `GameEventRecorder` 记录回合数据，`TrainingSummaryJson` 输出稳定 JSON，`AICoachClient` 调本地 HTTP，`ScorePanel` 显示 AI 反馈；服务离线时走 fallback | [README](../README.md) |
 
 ## 未完成 / 进行中功能
 
 | 功能 | 状态 | 简短说明 | 详情 |
 |---|---|---|---|
-| P9.5 演示画面打磨 | 进行中 | 缺少真正可见的黄昏天空、草坪材质细节、强进球反馈和大赛氛围 | [演示画面优化](DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
-| Quest 脚部触球调校 | 进行中 | 需要 Quest Link / APK 复测脚位置、碰撞体、触发距离、冲量和射门辅助 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
-| P9 性能优化 | 未完成 | 目标 Quest 稳定 72fps、Draw Call < 200、APK < 150MB | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
-| P10 演示视频 | 未完成 | 需要等画面和交互稳定后再录制 2-3 分钟视频 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
-| P11 智能足球训练模式 | 暂缓 | BS-BT91 / BLE / IMU 方向保留，当前不作为主线依赖 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
-| 真实机器人联调 | 降优先级 | 目前以 `FakeDataGenerator` 和本地流程为主，`NTManager` 仍有真实 NetworkTables TODO | [README](../README.md) |
-| P12 真实空间联动定位 | 未来项 | Limelight / AprilTag / VR 空间对齐先记录方案，本期不做 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
+| P8.5 简易场上 AI 状态机 | P0 / 未完成 | 对手缓慢追球、低概率截传球；守门员横向跟球、概率拿球/踢走；队友接应传球与射门结果需要更像实时互动 | [核心玩法重构](CORE_GAMEPLAY_REWORK.md) |
+| Quest 脚部 hitbox / 触球调校 | P0 / 进行中 | 需要 Quest Link / APK 复测脚位置、碰撞体、触发距离、冲量和射门辅助 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
+| AI Coach 本地服务联调 | P1 / 待验证 | Unity 端已接入 `POST http://localhost:8000/analyze`，需要接真实 LLM 服务验证请求/响应格式 | [PLAN](../PLAN.md) |
+| P9.5 演示画面打磨 | P2 / 进行中 | 缺少真正可见的黄昏天空、草坪材质细节、强进球反馈和大赛氛围 | [演示画面优化](DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
+| P9 性能优化 | P3 / 未完成 | 目标 Quest 稳定 72fps、Draw Call < 200、APK < 150MB | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
+| P10 演示视频 | P3 / 未完成 | 需要等画面和交互稳定后再录制 2-3 分钟视频 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
+| P11 智能足球训练模式 | P3 / 暂缓 | BS-BT91 / BLE / IMU 方向保留，当前不作为主线依赖 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
+| 真实机器人联调 | P3 / 降优先级 | 目前以 `FakeDataGenerator` 和本地流程为主，`NTManager` 仍有真实 NetworkTables TODO | [README](../README.md) |
+| P12 真实空间联动定位 | P3 / 未来项 | Limelight / AprilTag / VR 空间对齐先记录方案，本期不做 | [旧计划归档](PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
 
 ## 已修 Bug
 
@@ -66,6 +79,7 @@
 
 | Bug / 风险 | 状态 | 简短说明 | 下一步 |
 |---|---|---|---|
+| 队友/对手/守门员缺少实时 AI 互动 | P0 / 未完成 | 当前主要是剧本路径、转头看球、Recovery 表现和守门员站位；缺少对球、传球路线、射门轨迹的轻量状态机反应 | 设计并实现 P8.5 简易 AI 状态机 |
 | 脚部触球不稳定 | 待调校 | 可见鞋碰到球时，接触/冲量有时不触发；主要怀疑是可视模型、offset 和 `BoxCollider` 不对齐 | 用 `PhysicalTouchTest`、gizmos、closest-point overlay 调 `Foot Collider Center` / `Foot Size` / offset |
 | 传球到队友附近后球偶发回中心并半陷地面 | 待定位 | 疑似物理持球、队友射门脚本、`BallController.SetPhysicalSimulation(...)` 和 transform 重定位冲突 | 复现并记录触发路径，再拆查 MatchFlow 与 BallController 状态切换 |
 | Quest 真机脚部交互手感未知 | 待复测 | 当前代码编译通过，但脚感、右 trigger pass intent、出界/进球体积需要头显确认 | Quest Link 快速测，再 APK 复测 |

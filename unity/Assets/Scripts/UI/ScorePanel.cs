@@ -24,6 +24,7 @@ namespace SoccerBot
         [SerializeField] private TMP_Text _scoreText;
         [SerializeField] private TMP_Text _outcomeText;
         [SerializeField] private TMP_Text _flavorText;
+        [SerializeField] private TMP_Text _aiCoachFeedbackText;
 
         [Header("Timing")]
         [SerializeField] private float _fadeDuration = 0.5f;
@@ -73,10 +74,12 @@ namespace SoccerBot
         };
 
         private string _firstTouchSummary = string.Empty;
+        private string _currentScenarioFlavor = string.Empty;
 
         void Start()
         {
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
+            EnsureAICoachFeedbackText();
             if (_player != null) _player.OnScenarioComplete += Show;
             else Debug.LogWarning("[ScorePanel] No ScenarioPlayer reference.");
         }
@@ -108,19 +111,47 @@ namespace SoccerBot
                 _firstTouchSummary = $"First Touch: pressured  {receiveBias * 100f:0}% shot chance";
         }
 
+        public void ShowAICoachAnalyzing()
+        {
+            EnsureAICoachFeedbackText();
+            string text = "AI Coach Feedback\nAnalyzing this round...";
+            if (_aiCoachFeedbackText != null)
+                SetText(_aiCoachFeedbackText, text);
+            else
+                SetText(_flavorText, $"{ComposeFlavor(_currentScenarioFlavor)}\n\n{text}");
+        }
+
+        public void ShowAICoachFeedback(AICoachFeedbackResponse feedback)
+        {
+            EnsureAICoachFeedbackText();
+            feedback ??= AICoachFeedbackResponse.Fallback(null, "missing feedback");
+            feedback.Validate();
+
+            string text = FormatAICoachFeedback(feedback);
+            if (_aiCoachFeedbackText != null)
+                SetText(_aiCoachFeedbackText, text);
+            else
+                SetText(_flavorText, $"{ComposeFlavor(_currentScenarioFlavor)}\n\n{text}");
+        }
+
         public void HideImmediate()
         {
             StopAllCoroutines();
             transform.localScale = Vector3.one;
             if (_canvasGroup != null) _canvasGroup.alpha = 0f;
+            SetText(_aiCoachFeedbackText, string.Empty);
         }
 
         private IEnumerator ShowRoutine(Scenario s, string outcomeLabelOverride, string scoreTextOverride, string flavorTextOverride)
         {
+            EnsureAICoachFeedbackText();
+            SetText(_aiCoachFeedbackText, string.Empty);
+            _currentScenarioFlavor = string.IsNullOrWhiteSpace(flavorTextOverride) ? s.flavorText : flavorTextOverride;
+
             SetText(_scenarioNameText, s.scenarioName);
             SetText(_scoreText, string.IsNullOrWhiteSpace(scoreTextOverride) ? GetRandomScoreText(s.finalScore) : scoreTextOverride);
             SetText(_outcomeText, string.IsNullOrWhiteSpace(outcomeLabelOverride) ? OutcomeLabel(s.outcome) : outcomeLabelOverride);
-            SetText(_flavorText, ComposeFlavor(string.IsNullOrWhiteSpace(flavorTextOverride) ? s.flavorText : flavorTextOverride));
+            SetText(_flavorText, ComposeFlavor(_currentScenarioFlavor));
 
             var c = OutcomeColor(s.outcome);
             ApplyColor(_scenarioNameText, c);
@@ -185,6 +216,44 @@ namespace SoccerBot
             if (string.IsNullOrWhiteSpace(scenarioFlavor))
                 return _firstTouchSummary;
             return $"{scenarioFlavor}\n{_firstTouchSummary}";
+        }
+
+        private void EnsureAICoachFeedbackText()
+        {
+            if (_aiCoachFeedbackText != null)
+                return;
+
+            Transform parent = _flavorText != null && _flavorText.transform.parent != null
+                ? _flavorText.transform.parent
+                : transform;
+
+            var go = new GameObject("AICoachFeedback", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var text = go.AddComponent<TextMeshProUGUI>();
+            text.text = string.Empty;
+            text.fontSize = 20f;
+            text.color = new Color(0.85f, 0.95f, 1f, 1f);
+            text.alignment = TextAlignmentOptions.TopLeft;
+            text.textWrappingMode = TextWrappingModes.Normal;
+            text.raycastTarget = false;
+
+            RectTransform rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0f);
+            rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.sizeDelta = new Vector2(760f, 150f);
+            rt.anchoredPosition = new Vector2(0f, 18f);
+
+            _aiCoachFeedbackText = text;
+        }
+
+        private static string FormatAICoachFeedback(AICoachFeedbackResponse feedback)
+        {
+            return "AI Coach Feedback\n"
+                + $"Summary: {feedback.summary}\n"
+                + $"Problem: {feedback.mainProblem}\n"
+                + $"Advice: {feedback.advice}\n"
+                + $"Next drill: {feedback.nextDrillSuggestion}";
         }
 
         private string GetRandomScoreText(int finalScore)

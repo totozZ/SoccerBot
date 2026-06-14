@@ -6,9 +6,20 @@
 ## 当前结论
 
 - 主线原型已跑通：PC / Quest 基础流程、接球、反抢、射门、回放和评分已经形成闭环。
-- 当前优先级：先把 Quest 脚部物理触球调稳，再做 P9.5 演示画面第一眼打磨。
+- 当前优先级：P0 同时推进“简易场上 AI 状态机”和“Quest 脚部 hitbox / 触球调校”。
+- P1 预留给LLM AI；P2 才是画面优化；其他事项统一降到 P3。
 - 所有功能/bug 总览见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 - 旧版长计划已归档到 [docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md](docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md)。
+
+## 优先级队列
+
+| 优先级 | 项目 | 状态 | 说明 |
+|---|---|---|---|
+| P0 | 简易场上 AI 状态机 | 未完成 | 队友/对手/守门员至少要和玩家、球、传球路线、射门轨迹产生轻量互动 |
+| P0 | Quest 脚部 hitbox / 触球调校 | 进行中 | 调整脚部碰撞体、offset、触发距离和冲量，让“看见碰到球”稳定变成有效触球 |
+| P1 | LLM AI Coach 训练闭环 | 已接入 MVP | 回合数据记录、TrainingSummaryJson、本地 HTTP 分析、ScorePanel AI 反馈和离线 fallback |
+| P2 | 演示画面优化 | 进行中 | 黄昏天空、草坪材质、进球反馈、看台氛围 |
+| P3 | 其他功能和长期方向 | 排队 | 性能专项、演示视频、智能足球、真实空间联动等 |
 
 ## 进度表
 
@@ -19,6 +30,8 @@
 | 完成 | P3-P5.1 | 剧本系统、剧本资产、评分 UI、球起点跟随机器人 | 见 [旧计划归档](docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md) |
 | 完成 | P6-P8 | XR Origin、PC 自由视角、演示流程、Quest 3S APK 跑通 | 见 [项目状态总览](docs/PROJECT_STATUS.md) |
 | 完成一版 | Gameplay V1.2 | 接球提示、接球质量、Recovery 反抢、First Touch 结算说明 | 见 [核心玩法 V1.2](docs/CORE_GAMEPLAY_REWORK_V1_2_DEMO_FEEDBACK.md) |
+| 未完成 | P8.5 | 简易队友 / 对手 / 守门员状态机 AI | 见 [项目状态总览](docs/PROJECT_STATUS.md) |
+| 已接入 MVP | P8.6 | LLM AI Coach 训练闭环 | 见 [项目状态总览](docs/PROJECT_STATUS.md) |
 | 原型接入 | Quest 脚部交互 | 手柄驱动腿/脚、物理球交互、边界/球门判定 | 见 [Quest 手柄当腿脚设计](docs/QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 | 进行中 | P9.5 | 黄昏天空、草坪材质、进球反馈、看台氛围 | 见 [演示画面优化](docs/DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
 | 未完成 | P9 | Quest 性能专项：72fps、Draw Call、APK 体积 | 待 P9.5 和脚部交互稳定后集中做 |
@@ -28,10 +41,11 @@
 
 ## 下一步
 
-1. 用 Quest Link / APK 复测脚部触球，优先解决“可见脚碰到球但触发不稳定”和“传球后球偶发回中心/半陷地面”。
-2. 执行 P9.5 第一阶段：黄昏天空、灯光参数、雾气和后处理统一。
-3. 修复草坪/足球/球门材质，再加强进球纸屑、欢呼、闪灯和镜头停留。
-4. 跑 Quest 性能回归，最后录制演示视频。
+1. P0：补简易场上 AI 状态机，让对手追球/低概率截传球、守门员横移守门/概率解围、队友接应传球。
+2. P0：用 Quest Link / APK 复测脚部触球，优先解决“可见脚碰到球但触发不稳定”和“传球后球偶发回中心/半陷地面”。
+3. P1：联调本地 `POST http://localhost:8000/analyze` AI Coach 服务，确认 JSON 请求/响应格式。
+4. P2：执行演示画面优化，先做黄昏天空、草坪材质、进球反馈。
+5. P3：性能回归、演示视频、智能足球和真实空间联动排队处理。
 
 ## 文档入口
 
