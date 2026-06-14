@@ -23,7 +23,7 @@
 
 | 优先级 | 项 | 状态 | 简短说明 |
 |---|---|---|---|
-| P0 | 简易场上 AI 状态机 | 未完成 | 队友、对手、守门员需要至少有轻量状态机，能对玩家、球、传球路线和射门轨迹作出反应 |
+| P0 | 简易场上 AI 状态机 | 完成一版，待复测调参 | `FieldAIController` 已让队友、对手、守门员对玩家、球、传球路线和射门轨迹产生轻量反应 |
 | P0 | Quest 脚部 hitbox / 触球调校 | 进行中 | 让可见脚部模型、碰撞体和物理触球结果对齐，减少“看见碰到但没触发” |
 | P1 | LLM AI Coach 训练闭环 | 已接入 MVP | 回合数据记录、TrainingSummaryJson、本地 HTTP 分析、ScorePanel AI 反馈和离线 fallback |
 | P2 | 演示画面优化 | 进行中 | 黄昏天空、草坪材质、进球反馈、看台氛围 |
@@ -46,13 +46,14 @@
 | 演示画面基础链路 | 已接入 | 程序化球场、看台、灯光、Bloom/Vignette、观众、纸屑和进球反馈骨架已存在 | [演示画面优化](DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
 | Quest 手柄脚部原型 | 原型已接入 | 手柄位姿驱动左右脚、脚部碰撞区、物理球交互、调参/测试模式已接入 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 | 边界与球门判定 | 已接入 | 物理边界、球门口缺口、`OpponentGoalTrigger`、出界/射偏/进球文本已接入 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
+| 简易场上 AI 状态机 | 完成一版 / 待复测 | `FieldAIController` 自动接入 `MatchFlowController`，提供队友接应、对手追球/低概率截传、守门员横移跟球和概率扑救 | [核心玩法重构](CORE_GAMEPLAY_REWORK.md) |
 | LLM AI Coach 训练闭环 | P1 / 已接入 MVP | `GameEventRecorder` 记录回合数据，`TrainingSummaryJson` 输出稳定 JSON，`AICoachClient` 调本地 HTTP，`ScorePanel` 显示 AI 反馈；服务离线时走 fallback | [README](../README.md) |
 
 ## 未完成 / 进行中功能
 
 | 功能 | 状态 | 简短说明 | 详情 |
 |---|---|---|---|
-| P8.5 简易场上 AI 状态机 | P0 / 未完成 | 对手缓慢追球、低概率截传球；守门员横向跟球、概率拿球/踢走；队友接应传球与射门结果需要更像实时互动 | [核心玩法重构](CORE_GAMEPLAY_REWORK.md) |
+| P8.5 简易场上 AI 状态机 | P0 / 完成一版，待复测调参 | 对手缓慢追球、低概率截传球；守门员横向跟球、概率扑救；队友会移动到接应角度并追向传球 | [核心玩法重构](CORE_GAMEPLAY_REWORK.md) |
 | Quest 脚部 hitbox / 触球调校 | P0 / 进行中 | 需要 Quest Link / APK 复测脚位置、碰撞体、触发距离、冲量和射门辅助 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 | AI Coach 本地服务联调 | P1 / 待验证 | Unity 端已接入 `POST http://localhost:8000/analyze`，需要接真实 LLM 服务验证请求/响应格式 | [PLAN](../PLAN.md) |
 | P9.5 演示画面打磨 | P2 / 进行中 | 缺少真正可见的黄昏天空、草坪材质细节、强进球反馈和大赛氛围 | [演示画面优化](DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
@@ -79,7 +80,7 @@
 
 | Bug / 风险 | 状态 | 简短说明 | 下一步 |
 |---|---|---|---|
-| 队友/对手/守门员缺少实时 AI 互动 | P0 / 未完成 | 当前主要是剧本路径、转头看球、Recovery 表现和守门员站位；缺少对球、传球路线、射门轨迹的轻量状态机反应 | 设计并实现 P8.5 简易 AI 状态机 |
+| 队友/对手/守门员缺少实时 AI 互动 | 已缓解 / 待复测 | 已新增 `FieldAIController` 轻量状态机；仍需在 Play Mode / Quest Link 调速度、距离和概率，确认不会抢走玩家主体验 | 复测 P8.5 AI 行为手感并微调参数 |
 | 脚部触球不稳定 | 待调校 | 可见鞋碰到球时，接触/冲量有时不触发；主要怀疑是可视模型、offset 和 `BoxCollider` 不对齐 | 用 `PhysicalTouchTest`、gizmos、closest-point overlay 调 `Foot Collider Center` / `Foot Size` / offset |
 | 传球到队友附近后球偶发回中心并半陷地面 | 待定位 | 疑似物理持球、队友射门脚本、`BallController.SetPhysicalSimulation(...)` 和 transform 重定位冲突 | 复现并记录触发路径，再拆查 MatchFlow 与 BallController 状态切换 |
 | Quest 真机脚部交互手感未知 | 待复测 | 当前代码编译通过，但脚感、右 trigger pass intent、出界/进球体积需要头显确认 | Quest Link 快速测，再 APK 复测 |

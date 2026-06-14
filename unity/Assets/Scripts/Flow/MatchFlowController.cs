@@ -38,6 +38,7 @@ namespace SoccerBot
         [SerializeField] private GameObject _hudRoot;
         [SerializeField] private ReceptionPromptPresenter _receptionPrompt;
         [SerializeField] private ReceptionTargetIndicator _receptionTargetIndicator;
+        [SerializeField] private FieldAIController _fieldAI;
 
         [Header("Ball Offsets")]
         [SerializeField] private Vector3 _ballOffsetRobot = new(0f, 1.0f, 0.4f);
@@ -229,6 +230,7 @@ namespace SoccerBot
             EnsureFarGoalTargets();
             EnsureMatchBoundaryWalls();
             EnsureDemoScenePolish();
+            EnsureFieldAIController();
 
             if (_player != null)
             {
@@ -430,6 +432,22 @@ namespace SoccerBot
                 recorder = gameObject.AddComponent<GameEventRecorder>();
 
             recorder.Configure(this, _ball, _scorePanel, coachClient);
+        }
+
+        private void EnsureFieldAIController()
+        {
+            if (_fieldAI == null)
+                _fieldAI = FindFirstObjectByType<FieldAIController>(FindObjectsInactive.Include);
+            if (_fieldAI == null)
+                _fieldAI = gameObject.AddComponent<FieldAIController>();
+
+            _fieldAI.Configure(
+                this,
+                _ball,
+                _playerTransform,
+                _teammateTransform,
+                _opponentTransform,
+                _goalkeeperTransform);
         }
 
         private void PlayWhistle()
@@ -1083,6 +1101,13 @@ namespace SoccerBot
                 if (!_isMatchRunning) yield break;
                 yield return DoPass();
                 if (!_isMatchRunning) yield break;
+                if (CurrentPhase == Phase.Shot)
+                {
+                    yield return DoShotAndScore();
+                    if (!_isMatchRunning) yield break;
+                    yield return DoCooldown();
+                    continue;
+                }
                 yield return DoPossession();
                 if (!_isMatchRunning) yield break;
                 yield return DoShotAndScore();
@@ -1160,6 +1185,9 @@ namespace SoccerBot
             float t = 0f;
             while (t < _passFlightTime)
             {
+                if (CurrentPhase != Phase.Pass || _rallyResolved)
+                    yield break;
+
                 t += Time.deltaTime;
                 float u = Mathf.Clamp01(t / _passFlightTime);
                 _passProgress01 = u;
@@ -1182,6 +1210,9 @@ namespace SoccerBot
                 _ball.transform.position = pos;
                 yield return null;
             }
+            if (CurrentPhase != Phase.Pass || _rallyResolved)
+                yield break;
+
             _ball.transform.position = endPos;
             _passProgress01 = 1f;
             if (_player != null) _player.ReceptionEnabled = false;
@@ -1280,6 +1311,80 @@ namespace SoccerBot
                 return;
 
             ResolveSelfGoal();
+        }
+
+        public bool TryResolveAiInterception(string reason)
+        {
+            if (!_isMatchRunning || _rallyResolved)
+                return false;
+            if (CurrentPhase != Phase.Pass && CurrentPhase != Phase.Possession && CurrentPhase != Phase.Shot)
+                return false;
+
+            Phase interceptedFrom = CurrentPhase;
+            StopActiveShotRoutine();
+            ResetPassJudgement();
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null)
+            {
+                _ball.Detach();
+                _ball.SetPhysicalSimulation(false, true);
+            }
+
+            Transform origin = interceptedFrom == Phase.Pass ? _robotTransform : _playerTransform;
+            if (_scenarioTrigger != null)
+            {
+                PlayInterceptedScenario(origin);
+            }
+            else
+            {
+                if (_scorePanel != null && _shotMissedData != null)
+                    _scorePanel.Show(_shotMissedData, "INTERCEPTED", "STOPPED", "The opponent read the pass lane and won the ball.");
+                if (_scoreBoard != null)
+                    _scoreBoard.Record(ScenarioOutcome.Intercepted);
+                HandleShotResolved();
+                NotifyRoundResolved(_shotMissedData, "INTERCEPTED");
+            }
+            Debug.Log(string.IsNullOrWhiteSpace(reason) ? "[MatchFlow] AI interception resolved." : reason);
+            return true;
+        }
+
+        public bool TryResolveGoalkeeperSave(string reason)
+        {
+            if (!_isMatchRunning || _rallyResolved || CurrentPhase != Phase.Shot)
+                return false;
+
+            StopActiveShotRoutine();
+            ResetPassJudgement();
+            CurrentPhase = Phase.Shot;
+            if (_player != null)
+            {
+                _player.ShootingEnabled = false;
+                _player.MovementEnabled = false;
+                _player.ReceptionEnabled = false;
+            }
+            if (_ball != null)
+            {
+                _ball.Detach();
+                _ball.SetPhysicalSimulation(false, true);
+                if (_goalkeeperTransform != null)
+                    _ball.transform.position = _goalkeeperTransform.position - GetAttackForward() * 0.45f + Vector3.up * 0.35f;
+            }
+
+            if (_scorePanel != null && _shotMissedData != null)
+                _scorePanel.Show(_shotMissedData, "SAVED", "KEEPER SAVE", "The goalkeeper tracked the shot and kicked it away.");
+            if (_scoreBoard != null)
+                _scoreBoard.Record(ScenarioOutcome.Missed);
+
+            Debug.Log(string.IsNullOrWhiteSpace(reason) ? "[MatchFlow] Goalkeeper save resolved." : reason);
+            HandleShotResolved();
+            NotifyRoundResolved(_shotMissedData, "SAVED");
+            return true;
         }
 
         private void GuardGoalAndBoundary()
@@ -1852,9 +1957,9 @@ namespace SoccerBot
             _shotRoutine = StartCoroutine(routine);
         }
 
-        private void PlayInterceptedScenario()
+        private void PlayInterceptedScenario(Transform origin = null)
         {
-            if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(_playerTransform);
+            if (_scenarioPlayer != null) _scenarioPlayer.SetOrigin(origin != null ? origin : _playerTransform);
             if (_scenarioTrigger != null) _scenarioTrigger.ForcePlay(0);
         }
 

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using NUnit.Framework;
+using SoccerBot;
 
 namespace SoccerBot.Tests
 {
