@@ -1915,10 +1915,14 @@ namespace SoccerBot
 
             float receiveBias = Mathf.Lerp(-_poorReceivePowerPenalty, _receivePowerBonus, _receiveQuality);
             float arrivalSpeed01 = Mathf.InverseLerp(0.6f, 5.5f, GetBallHorizontalSpeed());
+            float aiPressure = _fieldAI != null ? _fieldAI.PassPressure01 : 0f;
+            float aiSupport = _fieldAI != null ? _fieldAI.TeammateSupport01 : 0f;
             float effectivePower = Mathf.Clamp01(
                 passPower01 * 0.55f +
                 arrivalSpeed01 * 0.45f +
                 receiveBias +
+                aiSupport * 0.08f -
+                aiPressure * 0.14f +
                 UnityEngine.Random.Range(-_randomJitter, _randomJitter));
             _scorePanel?.SetFirstTouchContext(_receiveQuality, receiveBias);
             _receptionPrompt?.ShowShotBias(receiveBias);
@@ -1930,13 +1934,16 @@ namespace SoccerBot
                 return;
             }
 
-            if (effectivePower < _teammatePassSlowPower)
+            bool pressureForcedTurnover = aiPressure > 0.82f && effectivePower < _teammatePassSlowPower + 0.10f;
+            if (effectivePower < _teammatePassSlowPower || pressureForcedTurnover)
             {
                 PlayInterceptedScenario();
                 return;
             }
 
-            bool scored = UnityEngine.Random.value <= _teammatePassGoodScoreChance * Mathf.Clamp01(0.55f + passAimDot * 0.45f);
+            float aiScoreMultiplier = Mathf.Lerp(0.72f, 1.12f, aiSupport) * Mathf.Lerp(1.05f, 0.76f, aiPressure);
+            float scoreChance = Mathf.Clamp01(_teammatePassGoodScoreChance * Mathf.Clamp01(0.55f + passAimDot * 0.45f) * aiScoreMultiplier);
+            bool scored = UnityEngine.Random.value <= scoreChance;
             StartShotRoutine(DoTeammateShot(scored ? GetScoreTarget() : GetMissTarget(), scored ? _scoreSuccessData : _shotMissedData));
         }
 

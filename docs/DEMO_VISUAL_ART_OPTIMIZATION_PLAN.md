@@ -2,7 +2,7 @@
 
 日期：2026-06-10  
 状态：待确认后执行  
-范围：只规划画面、美术、材质、灯光、后处理、进球反馈与演示可读性；本文不改 Unity 资源。
+范围：只规划画面、美术、材质、灯光、角色基础动态、后处理、进球反馈与演示可读性；本文不改 Unity 资源。
 
 ---
 
@@ -16,6 +16,7 @@
 |------|----------|------|
 | `PLAN.md` P1-P8 | 已勾选 | 核心场景、流程、VR 部署、基础视觉链路已完成 |
 | `docs/CORE_GAMEPLAY_REWORK_V1_2_DEMO_FEEDBACK.md` | 大部分已落地 | 接球提示、接球圈、即时反馈、射门加成提示已经进入代码；评分面板解释仍不完整 |
+| `PLAN.md` P1.5 免费资源小人基础动态 | 未开始 | 需要盘点免费小人是否有 Humanoid 骨骼/动画 clip；目标是让 AI 跑位有待机、跑步、扑救、庆祝等基础动势 |
 | `PLAN.md` P9.5 视觉演示打磨 | 未完成 | 已有灯光、观众、后处理、粒子骨架，但画面观感仍未达标 |
 | P9 性能优化 | 未完成 | 仍待 Quest 72fps / Draw Call / APK 体积专项验证 |
 | P10 演示视频 | 未完成 | 需等画面满意后再拍摄 |
@@ -26,9 +27,10 @@
 2. 场地草坪材质资产存在，但 `GrassMat_Upgraded.mat` 看起来没有正确写入 albedo 主贴图，实际画面可能仍偏素。
 3. 进球反馈剂量偏轻：纸屑 25、半径 4m、闪灯 boost 0.6、闪灯 2 次，演示高潮不够强。
 4. `CrowdAnimator._crowdCheerClips` 在场景里为空，虽然 `AudioManager` 有 goal/miss/intercept SFX，但观众独立欢呼链路未填。
-5. `WeatherController` 代码存在，但 `Main.unity` 未检索到挂载；且只有 Sunny/Rain，没有 P9.5 文档要求的 Dusk/Dry Haze。
-6. 场景里 `LightingConfigurator` 序列化值仍是旧参数：`_lightYAngle = -20`、`_shadowStrength = 0.65`，脚本默认已更新为 `-8 / 0.45`，需要统一。
-7. 后处理已有 Bloom/Vignette/ACES，但当前场景参数偏保守：Bloom 0.5、threshold 1.1、postExposure 0。
+5. AI 小人已有位置移动和状态切换，但缺少基础待机/跑步/扑救动态，容易像“滑动棋子”。
+6. `WeatherController` 代码存在，但 `Main.unity` 未检索到挂载；且只有 Sunny/Rain，没有 P9.5 文档要求的 Dusk/Dry Haze。
+7. 场景里 `LightingConfigurator` 序列化值仍是旧参数：`_lightYAngle = -20`、`_shadowStrength = 0.65`，脚本默认已更新为 `-8 / 0.45`，需要统一。
+8. 后处理已有 Bloom/Vignette/ACES，但当前场景参数偏保守：Bloom 0.5、threshold 1.1、postExposure 0。
 
 ### 1.3 推荐策略
 
@@ -39,8 +41,9 @@
 1. 黄昏天空 + 雾气 + 灯光参数统一
 2. 草坪材质修复 + 球门/球/灯牌材质增强
 3. 进球绝杀反馈加量：纸屑、闪灯、欢呼、镜头停留
-4. 看台国家配色与观众动作增强
-5. Quest 性能回归验证
+4. P1.5 免费资源小人基础动态：待机、跑步、守门员侧扑、进球/失误反应
+5. 看台国家配色与观众动作增强
+6. Quest 性能回归验证
 
 ---
 
@@ -308,6 +311,50 @@
 
 ---
 
+### 4.6 P1.5：免费资源小人基础动态 / 跑步动画层
+
+目标：让队友、对手、守门员跟随 `FieldAIController` 移动时有基础动势，不再只是平移滑动。
+
+拟改内容：
+
+1. 资源盘点
+   - 检查当前免费小人模型是否有 `Animator`、Humanoid Rig、AnimationClip。
+   - 若已有可重定向动画，优先接 `Idle`、`Run/Jog`、`Save`、`Celebrate`。
+   - 若只是静态 mesh，则走低成本程序化动态。
+
+2. Animator 方案
+   - 新增或复用一个轻量 `Animator Controller`。
+   - 参数建议：`Speed`、`IsGoalkeeper`、`Save`、`Celebrate`。
+   - `Animator.applyRootMotion = false`，角色位移仍由 AI/Flow 控制，动画只负责视觉。
+
+3. 程序化兜底方案
+   - 待机：身体轻微上下呼吸、头/上身朝球。
+   - 跑步：根据移动速度做上下起伏、左右摆臂、脚部前后摆动。
+   - 守门员：横移时小碎步，`Saving` 状态做一次快速侧扑/伸手假动作。
+   - 进球或失误：队友小跳庆祝，对手/守门员短暂失望或回头看球。
+
+4. 与 AI 状态机绑定
+   - `HoldingShape` / `HoldingSupport` / `Set` -> Idle。
+   - `ClosingPassLane` / `MarkingReceiver` / `PressingBall` / `OfferingAngle` / `ReceivingPass` -> Run/Jog。
+   - `Saving` -> Save。
+   - `WatchingShot` -> Watch/Celebrate/React。
+
+验收标准：
+
+- AI 小人移动时不再明显脚底滑动成“棋子平移”。
+- 没有动画资源的小人也至少有可读的跑动假动作。
+- 不影响 `FieldAIController` 的位置控制和碰撞逻辑。
+- Quest 上不显著增加 CPU/GPU 压力。
+
+预计变更文件：
+
+- `unity/Assets/Scripts/Flow/FieldAIController.cs`
+- 可能新增 `unity/Assets/Scripts/Characters/CharacterMotionPresenter.cs`
+- 可能新增 `unity/Assets/Animations/*.controller`
+- 可能调整 `unity/Assets/Scenes/Main.unity`
+
+---
+
 ## 5. 执行计划
 
 ### 5.1 建议分支/提交顺序
@@ -324,10 +371,13 @@
 4. `进球反馈增强`
    - CrowdAnimator、音频触发、镜头停留。
 
-5. `评分面板补接球解释`
+5. `P1.5 小人基础动态`
+   - 盘点免费小人动画资源；接 Animator 或程序化动态 presenter。
+
+6. `评分面板补接球解释`
    - ScorePanel 与 MatchFlowController。
 
-6. `Quest 性能回归`
+7. `Quest 性能回归`
    - Profiler / OVR Metrics / 截图或录屏确认。
 
 ### 5.2 每阶段验证
@@ -337,6 +387,7 @@ PC Editor：
 - Play 后天空可见。
 - 草坪纹理可见。
 - Pass 阶段提示不遮球。
+- AI 小人跑位时有基础跑动/待机动势。
 - 进球反馈强烈且不乱。
 - ScorePanel 能解释接球影响。
 
@@ -345,6 +396,7 @@ Quest 3S：
 - 启动不闪退。
 - 头显视角里提示可读。
 - 天空/灯光不过曝。
+- 小人动态不造成明显掉帧或晕动。
 - 纸屑和灯光不造成明显掉帧。
 - 目标帧率优先接近 72fps，最低不低于 60fps。
 

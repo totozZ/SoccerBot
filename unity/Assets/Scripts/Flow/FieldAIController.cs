@@ -6,9 +6,9 @@ namespace SoccerBot
     [DisallowMultipleComponent]
     public class FieldAIController : MonoBehaviour
     {
-        public enum OpponentState { HoldingShape, ClosingPassLane, PressingBall, Intercepting }
-        public enum TeammateState { HoldingSupport, OfferingAngle, ReceivingPass, WatchingShot }
-        public enum GoalkeeperState { Set, TrackingBall, Saving }
+        public enum OpponentState { HoldingShape, ClosingPassLane, MarkingReceiver, PressingBall, Intercepting }
+        public enum TeammateState { HoldingSupport, OfferingAngle, ReceivingPass, PreparingShot, WatchingShot }
+        public enum GoalkeeperState { Set, Shuffling, TrackingBall, Saving }
 
         [Header("References")]
         [SerializeField] private MatchFlowController _flow;
@@ -30,6 +30,8 @@ namespace SoccerBot
         [SerializeField, Range(0f, 1f)] private float _passLaneReactStart01 = 0.28f;
         [SerializeField, Range(0f, 1f)] private float _passLaneReactEnd01 = 0.9f;
         [SerializeField, Range(0.2f, 4f)] private float _interceptionCooldown = 1.25f;
+        [SerializeField, Range(0.5f, 5f)] private float _passPressureLaneRadius = 2.4f;
+        [SerializeField, Range(0.5f, 5f)] private float _passPressureReceiverRadius = 2.1f;
 
         [Header("Teammate AI")]
         [SerializeField] private bool _enableTeammateAI = true;
@@ -39,6 +41,7 @@ namespace SoccerBot
         [SerializeField] private float _teammateSupportSideOffset = -2.2f;
         [SerializeField] private float _teammateSupportForwardOffset = 3.6f;
         [SerializeField, Range(0.1f, 2f)] private float _teammateBallCushion = 0.55f;
+        [SerializeField, Range(0.2f, 3f)] private float _teammateSupportReadyRadius = 0.75f;
 
         [Header("Goalkeeper AI")]
         [SerializeField] private bool _enableGoalkeeperAI = true;
@@ -47,11 +50,24 @@ namespace SoccerBot
         [SerializeField, Range(0.4f, 3f)] private float _goalkeeperLaneHalfWidth = 1.35f;
         [SerializeField, Range(0.2f, 3f)] private float _goalkeeperSaveRadius = 1.15f;
         [SerializeField, Range(0f, 1f)] private float _goalkeeperSaveChance = 0.28f;
+        [SerializeField, Range(0.2f, 2f)] private float _goalkeeperCoverageSaveMultiplier = 1.25f;
         [SerializeField, Range(-1f, 1f)] private float _shotTowardGoalMinDot = 0.25f;
+
+        [Header("Runtime Readouts")]
+        [SerializeField, Range(0f, 1f)] private float _passPressure01;
+        [SerializeField, Range(0f, 1f)] private float _teammateSupport01;
+        [SerializeField, Range(0f, 1f)] private float _goalkeeperCoverage01;
+        [SerializeField] private bool _debugStateChanges = false;
 
         public OpponentState CurrentOpponentState { get; private set; } = OpponentState.HoldingShape;
         public TeammateState CurrentTeammateState { get; private set; } = TeammateState.HoldingSupport;
         public GoalkeeperState CurrentGoalkeeperState { get; private set; } = GoalkeeperState.Set;
+        public float PassPressure01 => _passPressure01;
+        public float TeammateSupport01 => _teammateSupport01;
+        public float GoalkeeperCoverage01 => _goalkeeperCoverage01;
+        public float OpponentStateAge => Mathf.Max(0f, Time.time - _lastOpponentStateChangedAt);
+        public float TeammateStateAge => Mathf.Max(0f, Time.time - _lastTeammateStateChangedAt);
+        public float GoalkeeperStateAge => Mathf.Max(0f, Time.time - _lastGoalkeeperStateChangedAt);
 
         private MatchFlowController _subscribedFlow;
         private Vector3 _teammateHome;
@@ -69,6 +85,9 @@ namespace SoccerBot
         private Vector3 _lastBallPosition;
         private Vector3 _estimatedBallVelocity;
         private bool _hasLastBallPosition;
+        private float _lastOpponentStateChangedAt;
+        private float _lastTeammateStateChangedAt;
+        private float _lastGoalkeeperStateChangedAt;
 
         public void Configure(
             MatchFlowController flow,
@@ -149,9 +168,9 @@ namespace SoccerBot
                     TickShot();
                     break;
                 default:
-                    CurrentOpponentState = OpponentState.HoldingShape;
-                    CurrentTeammateState = TeammateState.HoldingSupport;
-                    CurrentGoalkeeperState = GoalkeeperState.Set;
+                    SetOpponentState(OpponentState.HoldingShape);
+                    SetTeammateState(TeammateState.HoldingSupport);
+                    SetGoalkeeperState(GoalkeeperState.Set);
                     break;
             }
         }
@@ -175,19 +194,19 @@ namespace SoccerBot
             _currentPassFlightTime = Mathf.Max(0.05f, flightTime);
             _passStartedAt = Time.time;
             _incomingPassInterceptionRolled = false;
-            CurrentOpponentState = OpponentState.ClosingPassLane;
+            SetOpponentState(OpponentState.ClosingPassLane);
         }
 
         private void HandleReceiveResolved(float quality01, float timingError01, bool byFootContact)
         {
             if (quality01 < 0.35f)
-                CurrentOpponentState = OpponentState.PressingBall;
+                SetOpponentState(OpponentState.PressingBall);
         }
 
         private void HandleShotAttempted(float power01, Vector3 direction)
         {
-            CurrentTeammateState = TeammateState.ReceivingPass;
-            CurrentGoalkeeperState = GoalkeeperState.TrackingBall;
+            SetTeammateState(TeammateState.PreparingShot);
+            SetGoalkeeperState(GoalkeeperState.TrackingBall);
             _goalkeeperSaveRolled = false;
         }
 
@@ -206,6 +225,9 @@ namespace SoccerBot
             _passStartedAt = -999f;
             _hasLastBallPosition = false;
             _estimatedBallVelocity = Vector3.zero;
+            _passPressure01 = 0f;
+            _teammateSupport01 = 0f;
+            _goalkeeperCoverage01 = 0f;
         }
 
         private void CaptureHomes(bool force)
@@ -226,9 +248,9 @@ namespace SoccerBot
         private void TickSetup()
         {
             CaptureHomes(false);
-            CurrentOpponentState = OpponentState.HoldingShape;
-            CurrentTeammateState = TeammateState.HoldingSupport;
-            CurrentGoalkeeperState = GoalkeeperState.Set;
+            SetOpponentState(OpponentState.HoldingShape);
+            SetTeammateState(TeammateState.HoldingSupport);
+            SetGoalkeeperState(GoalkeeperState.Set);
             FaceTowards(_opponentTransform, _playerTransform != null ? _playerTransform.position : GetBallPosition(), _opponentTurnSpeed);
             FaceTowards(_teammateTransform, _playerTransform != null ? _playerTransform.position : GetBallPosition(), _teammateTurnSpeed);
             TickGoalkeeperTrack(false);
@@ -245,20 +267,27 @@ namespace SoccerBot
                 Vector3 lanePoint = ClosestPointOnSegment(_currentPassStart, _currentPassEnd, _opponentTransform.position);
                 Vector3 target = Vector3.Lerp(lanePoint, ballPos, 0.45f);
                 target.y = _opponentHome.y;
-                CurrentOpponentState = OpponentState.ClosingPassLane;
+                UpdateIncomingPassPressure(ballPos);
+                SetOpponentState(OpponentState.ClosingPassLane);
                 MoveFlat(_opponentTransform, target, _opponentPassLaneSpeed, _opponentTurnSpeed, ballPos);
                 TryIncomingPassInterception(pass01, ballPos);
+            }
+            else
+            {
+                _passPressure01 = 0f;
             }
 
             if (_enableTeammateAI)
                 MoveTeammateToSupport(false);
+            else
+                _teammateSupport01 = 0f;
 
             TickGoalkeeperTrack(false);
         }
 
         private void TickRecovery()
         {
-            CurrentOpponentState = OpponentState.PressingBall;
+            SetOpponentState(OpponentState.PressingBall);
             FaceTowards(_opponentTransform, GetBallPosition(), _opponentTurnSpeed);
             FaceTowards(_teammateTransform, GetBallPosition(), _teammateTurnSpeed);
             TickGoalkeeperTrack(false);
@@ -271,11 +300,17 @@ namespace SoccerBot
 
             if (_enableOpponentAI && _opponentTransform != null)
             {
-                CurrentOpponentState = OpponentState.PressingBall;
-                Vector3 target = ClampAwayFromPlayer(ballPos);
+                UpdatePassPressure(ballPos);
+                bool markReceiver = !IsBallOwnedByPlayer() && _passPressure01 > 0.42f;
+                SetOpponentState(markReceiver ? OpponentState.MarkingReceiver : OpponentState.PressingBall);
+                Vector3 target = markReceiver ? BuildOpponentPassLaneTarget(ballPos) : ClampAwayFromPlayer(ballPos);
                 target.y = _opponentHome.y;
                 MoveFlat(_opponentTransform, target, _opponentPressSpeed, _opponentTurnSpeed, ballPos);
                 TryLooseBallInterception(ballPos);
+            }
+            else
+            {
+                _passPressure01 = 0f;
             }
 
             if (_enableTeammateAI)
@@ -285,14 +320,18 @@ namespace SoccerBot
                 else
                     MoveTeammateToReceive(ballPos);
             }
+            else
+            {
+                _teammateSupport01 = 0f;
+            }
 
             TickGoalkeeperTrack(false);
         }
 
         private void TickShot()
         {
-            CurrentOpponentState = OpponentState.HoldingShape;
-            CurrentTeammateState = TeammateState.WatchingShot;
+            SetOpponentState(OpponentState.HoldingShape);
+            SetTeammateState(TeammateState.WatchingShot);
             FaceTowards(_opponentTransform, GetBallPosition(), _opponentTurnSpeed);
             FaceTowards(_teammateTransform, GetBallPosition(), _teammateTurnSpeed);
             TickGoalkeeperTrack(true);
@@ -301,41 +340,54 @@ namespace SoccerBot
         private void MoveTeammateToSupport(bool activeSupport)
         {
             if (_teammateTransform == null)
+            {
+                _teammateSupport01 = 0f;
                 return;
+            }
 
-            CurrentTeammateState = activeSupport ? TeammateState.OfferingAngle : TeammateState.HoldingSupport;
-            Vector3 forward = GetAttackForward();
-            Vector3 right = GetAttackRight();
+            SetTeammateState(activeSupport ? TeammateState.OfferingAngle : TeammateState.HoldingSupport);
             Vector3 origin = _playerTransform != null ? _playerTransform.position : _teammateHome;
-            Vector3 target = origin + right * _teammateSupportSideOffset + forward * _teammateSupportForwardOffset;
-            target.y = _teammateHome.y;
+            Vector3 target = GetTeammateSupportTarget(origin);
+            UpdateTeammateSupport(target);
             MoveFlat(_teammateTransform, target, _teammateSupportSpeed, _teammateTurnSpeed, origin);
         }
 
         private void MoveTeammateToReceive(Vector3 ballPos)
         {
             if (_teammateTransform == null)
+            {
+                _teammateSupport01 = 0f;
                 return;
+            }
 
-            CurrentTeammateState = TeammateState.ReceivingPass;
+            SetTeammateState(TeammateState.ReceivingPass);
             Vector3 flatVelocity = Flatten(_estimatedBallVelocity);
             Vector3 target = ballPos;
             if (flatVelocity.sqrMagnitude > 0.01f)
                 target += flatVelocity.normalized * _teammateBallCushion;
             target.y = _teammateHome.y;
+            UpdateTeammateSupport(target);
             MoveFlat(_teammateTransform, target, _teammateReceiveSpeed, _teammateTurnSpeed, ballPos);
         }
 
         private void TickGoalkeeperTrack(bool allowSave)
         {
             if (!_enableGoalkeeperAI || _goalkeeperTransform == null)
+            {
+                _goalkeeperCoverage01 = 0f;
+                if (!_enableGoalkeeperAI)
+                    SetGoalkeeperState(GoalkeeperState.Set);
                 return;
+            }
 
             Vector3 ballPos = GetBallPosition();
             Vector3 right = GetAttackRight();
             Vector3 target = ClampGoalkeeperLane(_goalkeeperHome, right, _goalkeeperLaneHalfWidth, ballPos);
             target.y = _goalkeeperHome.y;
-            CurrentGoalkeeperState = allowSave ? GoalkeeperState.TrackingBall : GoalkeeperState.Set;
+            UpdateGoalkeeperCoverage(target);
+            SetGoalkeeperState(allowSave
+                ? GoalkeeperState.TrackingBall
+                : (_goalkeeperCoverage01 < 0.85f ? GoalkeeperState.Shuffling : GoalkeeperState.Set));
             MoveFlat(_goalkeeperTransform, target, _goalkeeperMoveSpeed, _goalkeeperTurnSpeed, ballPos);
 
             if (allowSave)
@@ -356,12 +408,13 @@ namespace SoccerBot
                 return;
 
             _incomingPassInterceptionRolled = true;
-            if (Random.value > _incomingPassInterceptChance)
+            float effectiveChance = Mathf.Clamp01(_incomingPassInterceptChance * Mathf.Lerp(0.65f, 1.75f, _passPressure01));
+            if (Random.value > effectiveChance)
                 return;
 
             _roundInterceptionUsed = true;
             _lastInterceptionTime = Time.time;
-            CurrentOpponentState = OpponentState.Intercepting;
+            SetOpponentState(OpponentState.Intercepting);
             _flow.TryResolveAiInterception("[FieldAI] Opponent cut off the incoming pass.");
         }
 
@@ -378,13 +431,13 @@ namespace SoccerBot
             if (distance > _opponentInterceptRadius)
                 return;
 
-            float chance = Mathf.Clamp01(_loosePassInterceptChancePerSecond * Time.deltaTime);
+            float chance = Mathf.Clamp01(_loosePassInterceptChancePerSecond * Mathf.Lerp(0.5f, 2.25f, _passPressure01) * Time.deltaTime);
             if (Random.value > chance)
                 return;
 
             _roundInterceptionUsed = true;
             _lastInterceptionTime = Time.time;
-            CurrentOpponentState = OpponentState.Intercepting;
+            SetOpponentState(OpponentState.Intercepting);
             _flow.TryResolveAiInterception("[FieldAI] Opponent stepped into the pass lane.");
         }
 
@@ -400,10 +453,11 @@ namespace SoccerBot
                 return;
 
             _goalkeeperSaveRolled = true;
-            if (Random.value > _goalkeeperSaveChance)
+            float effectiveChance = Mathf.Clamp01(_goalkeeperSaveChance * Mathf.Lerp(0.45f, _goalkeeperCoverageSaveMultiplier, _goalkeeperCoverage01));
+            if (Random.value > effectiveChance)
                 return;
 
-            CurrentGoalkeeperState = GoalkeeperState.Saving;
+            SetGoalkeeperState(GoalkeeperState.Saving);
             _flow.TryResolveGoalkeeperSave("[FieldAI] Goalkeeper saved the shot.");
         }
 
@@ -452,6 +506,126 @@ namespace SoccerBot
                 return target;
 
             return _playerTransform.position + fromPlayer.normalized * _opponentMinPlayerDistance;
+        }
+
+        private void UpdateIncomingPassPressure(Vector3 ballPos)
+        {
+            if (_opponentTransform == null)
+            {
+                _passPressure01 = 0f;
+                return;
+            }
+
+            Vector3 lanePoint = ClosestPointOnSegment(_currentPassStart, _currentPassEnd, _opponentTransform.position);
+            float laneDistance = FlatDistance(_opponentTransform.position, lanePoint);
+            float ballDistance = FlatDistance(_opponentTransform.position, ballPos);
+            float laneRadius = Mathf.Max(_opponentInterceptRadius + 0.01f, _passPressureLaneRadius);
+            float lanePressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, laneRadius, laneDistance);
+            float ballPressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, laneRadius, ballDistance);
+            _passPressure01 = Mathf.Clamp01(Mathf.Max(lanePressure, ballPressure));
+        }
+
+        private void UpdatePassPressure(Vector3 ballPos)
+        {
+            if (_opponentTransform == null || _teammateTransform == null)
+            {
+                _passPressure01 = 0f;
+                return;
+            }
+
+            Vector3 lanePoint = ClosestPointOnSegment(ballPos, _teammateTransform.position, _opponentTransform.position);
+            float laneDistance = FlatDistance(_opponentTransform.position, lanePoint);
+            float receiverDistance = FlatDistance(_opponentTransform.position, _teammateTransform.position);
+            float laneRadius = Mathf.Max(_opponentInterceptRadius + 0.01f, _passPressureLaneRadius);
+            float receiverRadius = Mathf.Max(_opponentInterceptRadius + 0.01f, _passPressureReceiverRadius);
+            float lanePressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, laneRadius, laneDistance);
+            float receiverPressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, receiverRadius, receiverDistance);
+            float ballSpeed01 = Mathf.InverseLerp(0.2f, 3f, Flatten(_estimatedBallVelocity).magnitude);
+            float ownershipScale = IsBallOwnedByPlayer() ? 0.55f : Mathf.Lerp(0.75f, 1.15f, ballSpeed01);
+            _passPressure01 = Mathf.Clamp01(Mathf.Max(lanePressure, receiverPressure) * ownershipScale);
+        }
+
+        private Vector3 BuildOpponentPassLaneTarget(Vector3 ballPos)
+        {
+            if (_teammateTransform == null || _opponentTransform == null)
+                return ClampAwayFromPlayer(ballPos);
+
+            Vector3 lanePoint = ClosestPointOnSegment(ballPos, _teammateTransform.position, _opponentTransform.position);
+            Vector3 target = Vector3.Lerp(ballPos, lanePoint, Mathf.Clamp01(_passPressure01));
+            target.y = _opponentHome.y;
+            return ClampAwayFromPlayer(target);
+        }
+
+        private Vector3 GetTeammateSupportTarget(Vector3 origin)
+        {
+            Vector3 forward = GetAttackForward();
+            Vector3 right = GetAttackRight();
+            Vector3 target = origin + right * _teammateSupportSideOffset + forward * _teammateSupportForwardOffset;
+            target.y = _teammateHome.y;
+            return target;
+        }
+
+        private void UpdateTeammateSupport(Vector3 target)
+        {
+            if (_teammateTransform == null)
+            {
+                _teammateSupport01 = 0f;
+                return;
+            }
+
+            float distance = FlatDistance(_teammateTransform.position, target);
+            _teammateSupport01 = Mathf.Clamp01(1f - Mathf.InverseLerp(
+                _teammateSupportReadyRadius,
+                _teammateSupportReadyRadius * 3.5f,
+                distance));
+        }
+
+        private void UpdateGoalkeeperCoverage(Vector3 target)
+        {
+            if (_goalkeeperTransform == null)
+            {
+                _goalkeeperCoverage01 = 0f;
+                return;
+            }
+
+            float distance = FlatDistance(_goalkeeperTransform.position, target);
+            _goalkeeperCoverage01 = Mathf.Clamp01(1f - Mathf.InverseLerp(
+                0.05f,
+                Mathf.Max(0.2f, _goalkeeperLaneHalfWidth),
+                distance));
+        }
+
+        private void SetOpponentState(OpponentState state)
+        {
+            if (CurrentOpponentState == state)
+                return;
+
+            CurrentOpponentState = state;
+            _lastOpponentStateChangedAt = Time.time;
+            if (_debugStateChanges)
+                Debug.Log($"[FieldAI] Opponent -> {state}");
+        }
+
+        private void SetTeammateState(TeammateState state)
+        {
+            if (CurrentTeammateState == state)
+                return;
+
+            CurrentTeammateState = state;
+            _lastTeammateStateChangedAt = Time.time;
+            if (_debugStateChanges)
+                Debug.Log($"[FieldAI] Teammate -> {state}");
+        }
+
+        private void SetGoalkeeperState(GoalkeeperState state)
+        {
+            if (CurrentGoalkeeperState == state)
+                return;
+
+            CurrentGoalkeeperState = state;
+            _lastGoalkeeperStateChangedAt = Time.time;
+            if (_debugStateChanges)
+                Debug.Log($"[FieldAI] Goalkeeper -> {state}");
         }
 
         private Vector3 GetAttackForward()

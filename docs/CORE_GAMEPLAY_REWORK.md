@@ -168,11 +168,12 @@ VR 手柄是手，不是脚。
 - 对手：Pass 阶段压向传球线路；Possession 阶段缓慢追球；在接近传球线路或散球时按低概率触发 `TryResolveAiInterception(...)`。
 - 守门员：根据球的横向位置在门线附近移动；Shot 阶段根据球速方向、距离和概率触发 `TryResolveGoalkeeperSave(...)`，显示 `SAVED` 结算。
 - Flow 接入：`MatchFlowController` 增加 AI 截断与门将扑救两个窄入口，并在 Pass 被 AI 截断时跳过后续 Possession，直接进入 Shot/Score/Cooldown 结算链。
-- 验证：Unity 6000.4.7f1 batchmode 脚本编译通过；当前项目测试文件仍在预定义程序集下，命令行 Test Runner 需要后续 asmdef/runtime assembly 迁移后才能真正发现并执行 EditMode 测试。
+- 状态读数：对手计算 `PassPressure01`，队友计算 `TeammateSupport01`，守门员计算 `GoalkeeperCoverage01`；这些读数会影响传球到队友后的被断概率、进球概率和门将扑救概率。
+- 验证：Unity 6000.4.7f1 打开的 Editor 已完成脚本重编译且无 `error CS`；batchmode 因当前项目已有 Editor 进程占用返回失败码，未发现本次代码编译错误。当前项目测试文件仍在预定义程序集下，命令行 Test Runner 需要后续 asmdef/runtime assembly 迁移后才能真正发现并执行 EditMode 测试。
 
 待复测：
 
-- PC Play Mode 观察对手是否太容易截断机器人来球。
+- PC Play Mode 观察对手是否太容易截断机器人来球，以及 `PassPressure01` 高时是否真的来自对手贴近传球线/接应点。
 - Quest Link 观察队友跑位和门将横移是否抢视线、是否影响脚部触球。
 - 根据实测调 `_incomingPassInterceptChance`、`_loosePassInterceptChancePerSecond`、`_goalkeeperSaveChance`、移动速度和距离半径。
 
