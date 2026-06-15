@@ -280,11 +280,11 @@ A: 完全物理化
   - It resolves `Player/FpsAnchor/FpsCamera` first, then falls back to `Camera.main`.
   - It reconstructs controller world pose from controller local pose plus HMD local pose, avoiding the earlier issue where the foot appeared in the upper-right sky when XR Origin space did not match the actual render camera space.
 - Runtime-created legs are parented under `Player`, not under XR Origin, so they are easier to find in Hierarchy.
-- Default visual-only safety remains enabled:
-  - `enableFootBallInteraction = false`
-  - `ensurePhysicalBallInteractor = false`
-  - `TrackedLegController.interactionEnabled = false`
-  - With these defaults, foot visuals do not affect ball physics, receive/pass/shoot, or MatchFlow.
+- Current P0 tuning defaults keep foot-ball interaction enabled:
+  - `enableFootBallInteraction = true`
+  - `ensurePhysicalBallInteractor = true`
+  - `TrackedLegController.interactionEnabled = true`
+  - This lets Quest Link / APK tests validate touch, receive, pass, and physical impulse without manually enabling hidden fields first.
 - Current Quest Link calibration from headset testing:
   - Left foot offset: `(0, -0.15, 0.16)`
   - Right foot offset: `(0, -0.15, 0.16)`
@@ -321,6 +321,12 @@ A: 完全物理化
 
 ### Latest Fix Notes
 
+- 2026-06-15 proximity contact assist pass:
+  - `TrackedLegController` now performs a small `Physics.OverlapBoxNonAlloc` probe around the predicted foot box during `FixedUpdate`.
+  - If the predicted foot box and ball are within the configured closest-point distance, it publishes the normal `FootContactData` path with contact zone `FootBoxProximity`.
+  - This is meant to cover fast controller movement or slight visual/collider mismatch where Unity trigger callbacks can miss a visible touch.
+  - `QuestControllerLegRig` exposes shared assist parameters: enable probe, padding, max closest distance, and min speed.
+  - `PhysicalTouchTest` / `FootBallTuningController` F2 panel now exposes `Assist padding`, `Assist distance`, and `Assist min speed` for live Quest Link tuning.
 - Added collider/contact diagnostics for the current physical-touch blocker:
   - `TrackedLegController` now draws the main foot `BoxCollider`, shin `CapsuleCollider`, and toe/instep/sole contact zones as gizmos.
   - Foot contacts now report `ContactZone`, `FootClosestPoint`, `BallClosestPoint`, and `ClosestPointDistance` in `FootContactData`.
@@ -375,14 +381,15 @@ A: 完全物理化
   - `TrackedLegController` uses trigger contact against objects with `BallController`.
   - `PhysicalBallInteractor` can receive those contacts and apply impulse or route them into `MatchFlowController`.
 - Current blocker:
-  - Foot-ball contact is still unreliable. The ball is often not received or not kicked even when the visible boot appears to touch it.
-  - Likely cause is model / collider mismatch: the procedural boot visual, controller-driven pose offset, and simple foot `BoxCollider` do not line up well enough with the visible foot and ball.
-  - This should be treated as a collider tuning / debug-visualization problem, not as a high-level MatchFlow problem yet.
+  - Foot-ball contact reliability has a code-side mitigation via `FootBoxProximity`, but still needs Quest Link / APK validation.
+  - If visible touches are still missed, likely cause remains model / collider mismatch: the procedural boot visual, controller-driven pose offset, and simple foot `BoxCollider` do not line up well enough with the visible foot and ball.
+  - This should still be treated as a collider / contact-assist tuning problem before changing high-level MatchFlow.
 - Recommended next debugging pass:
   - Use the new gizmos and `PhysicalTouchTest` closest-point overlay to tune `Foot Collider Center`, `Foot Size`, and pose offsets from `QuestControllerLegRig`, not from generated leg transforms.
   - Compare the visible boot against the cyan main foot box plus green/magenta/orange toe/instep/sole zones in Scene view during Quest Link Play Mode.
   - If the closest-point distance is near zero but no impulse is applied, tune `PhysicalBallInteractor` thresholds/cooldown next.
   - If the visible boot overlaps the ball but closest-point distance stays large, retune collider center/size before changing MatchFlow.
+  - If the distance is slightly positive but visually acceptable, raise `Assist padding` / `Assist distance` only enough to cover that gap.
   - Keep `PhysicalTouchTest` as the main test path until contact reliability is acceptable.
 
 ### Planned Next Changes
@@ -393,8 +400,8 @@ A: 完全物理化
   - Confirm the ball resets reliably and does not fight scripted `MatchFlow` control.
   - Capture closest-point distance ranges for good visual touches vs missed touches.
   - Capture useful ranges for foot speed, `power01`, `accuracy01`, impulse, lift, and cooldown.
-- After that validation, add `FootBallTuningController`:
-  - Runtime sliders/shortcuts for impulse, lift, speed thresholds, collider size, and reset offset.
+- Continue using the existing `FootBallTuningController`:
+  - Runtime sliders for impulse, lift, speed thresholds, collider size, reset offset, and contact assist.
   - Optional handoff back into `MatchFlowController` once the physical touch loop is stable.
 - After contact tuning, decide whether to replace the scripted pass/shot arcs inside `Main.unity` or keep them as authored presentation around physical touch points.
 
@@ -410,9 +417,9 @@ A: 完全物理化
 - `unity/Assets/Scripts/Player/QuestControllerLegRig.cs`
   - 运行时创建 `LeftTrackedLeg` / `RightTrackedLeg`。
   - 手柄位置默认按“手柄相对 HMD 的 tracking pose”映射到实际渲染相机 `Player/FpsAnchor/FpsCamera` 附近，避免 XR Origin 与玩家相机空间不一致时脚飘到天上。
-  - 默认 `enableFootBallInteraction = false` 且不自动给球挂 `PhysicalBallInteractor`；先用于调试显示位置，不影响现有 MatchFlow/球流程。
+  - 当前 P0 默认 `enableFootBallInteraction = true` 且自动给球挂 `PhysicalBallInteractor`，用于优先验证脚部触球链路。
   - 当前默认 `Leg Scale = 0.5`，并支持 Play Mode 中从 `QuestControllerLegRig` 实时同步 offset/scale/size 到左右脚。
-  - 需要进入脚触球阶段时，再在 Inspector 打开 `enableFootBallInteraction` 和 `ensurePhysicalBallInteractor`。
+  - 如需回到纯显示调试，可在 Inspector 关闭 `enableFootBallInteraction` 和 `ensurePhysicalBallInteractor`。
 
 - `unity/Assets/Scripts/Ball/PhysicalBallInteractor.cs`
   - 确保球有 `Rigidbody` 和 `SphereCollider`。

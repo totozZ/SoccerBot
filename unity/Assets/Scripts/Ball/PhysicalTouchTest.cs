@@ -507,7 +507,7 @@ namespace SoccerBot
 
         [Header("Overlay")]
         [SerializeField] private bool _showOverlay = true;
-        [SerializeField] private Rect _windowRect = new Rect(18f, 176f, 420f, 540f);
+        [SerializeField] private Rect _windowRect = new Rect(18f, 176f, 420f, 620f);
 
         [Header("Leg Pose")]
         [SerializeField] private Vector3 _leftPoseOffset = new Vector3(0f, -0.15f, 0.16f);
@@ -517,6 +517,12 @@ namespace SoccerBot
         [Header("Foot Collider")]
         [SerializeField] private Vector3 _footColliderCenter = new Vector3(0f, -0.03f, 0.18f);
         [SerializeField] private Vector3 _footSize = new Vector3(0.2f, 0.11f, 0.58f);
+
+        [Header("Contact Assist")]
+        [SerializeField] private bool _enableProximityContactProbe = true;
+        [SerializeField] private float _proximityProbePadding = 0.045f;
+        [SerializeField] private float _proximityProbeMaxDistance = 0.04f;
+        [SerializeField] private float _proximityProbeMinSpeed = 0.04f;
 
         [Header("Shin Collider")]
         [SerializeField] private Vector3 _shinColliderCenter = new Vector3(0f, 0.29f, -0.08f);
@@ -591,6 +597,12 @@ namespace SoccerBot
             _footSize = DrawVector3("Foot size", _footSize, 0.02f, 0.7f);
 
             GUILayout.Space(6f);
+            _enableProximityContactProbe = GUILayout.Toggle(_enableProximityContactProbe, "Enable contact assist");
+            _proximityProbePadding = DrawSlider("Assist padding", _proximityProbePadding, 0f, 0.12f);
+            _proximityProbeMaxDistance = DrawSlider("Assist distance", _proximityProbeMaxDistance, 0f, 0.12f);
+            _proximityProbeMinSpeed = DrawSlider("Assist min speed", _proximityProbeMinSpeed, 0f, 0.5f);
+
+            GUILayout.Space(6f);
             _shinColliderCenter = DrawVector3("Shin center", _shinColliderCenter, -0.4f, 0.6f);
             _shinRadius = DrawSlider("Shin radius", _shinRadius, 0.01f, 0.15f);
             _shinHeight = DrawSlider("Shin height", _shinHeight, 0.08f, 0.9f);
@@ -655,6 +667,10 @@ namespace SoccerBot
                 _lockFeetToGroundPlane = _legRig.LockFeetToGroundPlane;
                 _groundPlaneY = _legRig.GroundPlaneY;
                 _soleGroundClearance = _legRig.SoleGroundClearance;
+                _enableProximityContactProbe = _legRig.EnableProximityContactProbe;
+                _proximityProbePadding = _legRig.ProximityProbePadding;
+                _proximityProbeMaxDistance = _legRig.ProximityProbeMaxDistance;
+                _proximityProbeMinSpeed = _legRig.ProximityProbeMinSpeed;
             }
 
             if (_ballInteractor != null)
@@ -689,6 +705,11 @@ namespace SoccerBot
                     _lockFeetToGroundPlane,
                     _groundPlaneY,
                     _soleGroundClearance);
+                _legRig.ConfigureContactProximityProbe(
+                    _enableProximityContactProbe,
+                    _proximityProbePadding,
+                    _proximityProbeMaxDistance,
+                    _proximityProbeMinSpeed);
             }
 
             if (_ballInteractor != null)

@@ -39,6 +39,10 @@ namespace SoccerBot
 
         [Header("Interaction")]
         [SerializeField] private LayerMask _ballLayer = ~0;
+        [SerializeField] private bool _enableProximityContactProbe = true;
+        [SerializeField] private float _proximityProbePadding = 0.045f;
+        [SerializeField] private float _proximityProbeMaxDistance = 0.04f;
+        [SerializeField] private float _proximityProbeMinSpeed = 0.04f;
 
         [Header("Created Legs")]
         [SerializeField] private TrackedLegController _leftLeg;
@@ -57,6 +61,10 @@ namespace SoccerBot
         public bool LockFeetToGroundPlane => _lockFeetToGroundPlane;
         public float GroundPlaneY => _groundPlaneY;
         public float SoleGroundClearance => _soleGroundClearance;
+        public bool EnableProximityContactProbe => _enableProximityContactProbe;
+        public float ProximityProbePadding => _proximityProbePadding;
+        public float ProximityProbeMaxDistance => _proximityProbeMaxDistance;
+        public float ProximityProbeMinSpeed => _proximityProbeMinSpeed;
 
         private bool _settingsDirty;
         private bool _loggedRigDiagnostics;
@@ -107,6 +115,17 @@ namespace SoccerBot
             ApplySettingsToExistingLegs();
         }
 
+        public void ConfigureContactProximityProbe(bool enabled, float padding, float maxDistance, float minSpeed)
+        {
+            _enableProximityContactProbe = enabled;
+            _proximityProbePadding = Mathf.Max(0f, padding);
+            _proximityProbeMaxDistance = Mathf.Max(0f, maxDistance);
+            _proximityProbeMinSpeed = Mathf.Max(0f, minSpeed);
+
+            EnsureRig();
+            ApplySettingsToExistingLegs();
+        }
+
         private void Start()
         {
             if (_createOnStart)
@@ -130,6 +149,9 @@ namespace SoccerBot
             _shinRadius = Mathf.Max(0.005f, _shinRadius);
             _shinHeight = Mathf.Max(0.02f, _shinHeight);
             _soleGroundClearance = Mathf.Max(0f, _soleGroundClearance);
+            _proximityProbePadding = Mathf.Max(0f, _proximityProbePadding);
+            _proximityProbeMaxDistance = Mathf.Max(0f, _proximityProbeMaxDistance);
+            _proximityProbeMinSpeed = Mathf.Max(0f, _proximityProbeMinSpeed);
             _settingsDirty = true;
         }
 
@@ -254,6 +276,11 @@ namespace SoccerBot
                 _ballLayer,
                 _buildDefaultVisuals,
                 _enableFootBallInteraction);
+            current.ConfigureContactProximityProbe(
+                _enableProximityContactProbe,
+                _proximityProbePadding,
+                _proximityProbeMaxDistance,
+                _proximityProbeMinSpeed);
         }
 
         private static TrackedLegController FindExistingLeg(TrackedLegHandedness handedness)

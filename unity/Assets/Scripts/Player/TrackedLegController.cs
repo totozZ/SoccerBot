@@ -125,6 +125,12 @@ namespace SoccerBot
         [SerializeField] private float _contactLogInterval = 0.25f;
         [SerializeField] private bool _debugContacts = true;
 
+        [Header("Contact Assist")]
+        [SerializeField] private bool _enableProximityContactProbe = true;
+        [SerializeField] private float _proximityProbePadding = 0.045f;
+        [SerializeField] private float _proximityProbeMaxDistance = 0.04f;
+        [SerializeField] private float _proximityProbeMinSpeed = 0.04f;
+
         [Header("Debug Drawing")]
         [SerializeField] private bool _drawColliderGizmos = true;
         [SerializeField] private bool _drawContactDebug = true;
@@ -153,12 +159,21 @@ namespace SoccerBot
         private float _lastPublishedContactTime = -999f;
         private Collider _lastPublishedBallCollider;
         private TrackedLegContactZone[] _contactZones = Array.Empty<TrackedLegContactZone>();
+        private readonly Collider[] _proximityProbeResults = new Collider[8];
 
         public TrackedLegHandedness Handedness => _handedness;
         public Vector3 FootVelocity => _latestWorldVelocity;
         public Vector3 FootAngularVelocity => _latestWorldAngularVelocity;
         public bool HasTracking => _hasTracking;
         public bool ShootIntentHeld => _shootIntentAction != null && _shootIntentAction.IsPressed();
+
+        public void ConfigureContactProximityProbe(bool enabled, float padding, float maxDistance, float minSpeed)
+        {
+            _enableProximityContactProbe = enabled;
+            _proximityProbePadding = Mathf.Max(0f, padding);
+            _proximityProbeMaxDistance = Mathf.Max(0f, maxDistance);
+            _proximityProbeMinSpeed = Mathf.Max(0f, minSpeed);
+        }
 
         public void Configure(
             TrackedLegHandedness handedness,
@@ -248,6 +263,7 @@ namespace SoccerBot
 
             _footBody.MovePosition(_latestWorldPosition);
             _footBody.MoveRotation(_latestWorldRotation);
+            ProbeNearbyBallContacts();
         }
 
         private void OnCollisionEnter(Collision collision)
@@ -757,6 +773,67 @@ namespace SoccerBot
             PublishContact(other, sourceCollider, point, normal);
         }
 
+        private void ProbeNearbyBallContacts()
+        {
+            if (!_interactionEnabled || !_enableProximityContactProbe || _footCollider == null)
+                return;
+            if (_latestWorldVelocity.magnitude < _proximityProbeMinSpeed)
+                return;
+
+            Vector3 halfExtents = _footColliderSize * 0.5f + Vector3.one * _proximityProbePadding;
+            Vector3 boxCenter = _latestWorldPosition + _latestWorldRotation * _footColliderCenter;
+            int count = Physics.OverlapBoxNonAlloc(
+                boxCenter,
+                halfExtents,
+                _proximityProbeResults,
+                _latestWorldRotation,
+                _ballLayer,
+                QueryTriggerInteraction.Collide);
+
+            Vector3 contactHalfExtents = _footColliderSize * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                Collider ballCollider = _proximityProbeResults[i];
+                if (ballCollider == null || !IsCandidateBall(ballCollider))
+                    continue;
+
+                BuildPredictedClosestPointPair(
+                    ballCollider,
+                    boxCenter,
+                    _latestWorldRotation,
+                    contactHalfExtents,
+                    out Vector3 footClosestPoint,
+                    out Vector3 ballClosestPoint,
+                    out float distance);
+
+                if (distance > _proximityProbeMaxDistance)
+                    continue;
+
+                Vector3 normal = footClosestPoint - ballClosestPoint;
+                if (normal.sqrMagnitude < 0.000001f)
+                {
+                    Vector3 ballCenter = ballCollider.attachedRigidbody != null
+                        ? ballCollider.attachedRigidbody.worldCenterOfMass
+                        : ballCollider.bounds.center;
+                    normal = footClosestPoint - ballCenter;
+                }
+
+                if (normal.sqrMagnitude < 0.000001f)
+                    normal = -(_latestWorldRotation * Vector3.forward);
+
+                Vector3 contactPoint = distance <= 0.0001f ? footClosestPoint : ballClosestPoint;
+                PublishContact(
+                    ballCollider,
+                    _footCollider,
+                    contactPoint,
+                    normal.normalized,
+                    footClosestPoint,
+                    ballClosestPoint,
+                    distance,
+                    "FootBoxProximity");
+            }
+        }
+
         private Collider ResolveBestTriggerSource(Collider ballCollider)
         {
             if (!_useFootContactZones || _contactZones == null || ballCollider == null)
@@ -787,13 +864,40 @@ namespace SoccerBot
 
         private void PublishContact(Collider ballCollider, Collider sourceCollider, Vector3 contactPoint, Vector3 contactNormal)
         {
-            Rigidbody ballBody = ballCollider.attachedRigidbody;
             Collider contactCollider = sourceCollider != null ? sourceCollider : _footCollider;
             BuildClosestPointPair(contactCollider, ballCollider, out Vector3 footClosestPoint, out Vector3 ballClosestPoint, out float closestPointDistance);
+            PublishContact(
+                ballCollider,
+                contactCollider,
+                contactPoint,
+                contactNormal,
+                footClosestPoint,
+                ballClosestPoint,
+                closestPointDistance,
+                DescribeContactZone(contactCollider));
+        }
+
+        private void PublishContact(
+            Collider ballCollider,
+            Collider sourceCollider,
+            Vector3 contactPoint,
+            Vector3 contactNormal,
+            Vector3 footClosestPoint,
+            Vector3 ballClosestPoint,
+            float closestPointDistance,
+            string contactZone)
+        {
+            Rigidbody ballBody = ballCollider.attachedRigidbody;
+            Collider contactCollider = sourceCollider != null ? sourceCollider : _footCollider;
             Vector3 swingDirection = _latestWorldVelocity.sqrMagnitude > 0.0001f
                 ? _latestWorldVelocity.normalized
                 : transform.forward;
             Vector3 footForward = transform.forward;
+            if (contactNormal.sqrMagnitude < 0.000001f)
+                contactNormal = -footForward;
+            else
+                contactNormal.Normalize();
+
             Vector3 ballDirection = ballBody != null
                 ? (ballBody.worldCenterOfMass - _latestWorldPosition)
                 : (ballCollider.bounds.center - _latestWorldPosition);
@@ -810,7 +914,8 @@ namespace SoccerBot
             float swingAccuracy = Mathf.Clamp01(Vector3.Dot(swingDirection, ballDirection.normalized) * 0.5f + 0.5f);
             float faceAccuracy = Mathf.Clamp01(Vector3.Dot(footForward.normalized, ballDirection.normalized) * 0.5f + 0.5f);
             float accuracy01 = Mathf.Clamp01(swingAccuracy * 0.65f + faceAccuracy * 0.35f);
-            string contactZone = DescribeContactZone(contactCollider);
+            if (string.IsNullOrEmpty(contactZone))
+                contactZone = DescribeContactZone(contactCollider);
 
             var data = new FootContactData(
                 _handedness,
@@ -882,6 +987,34 @@ namespace SoccerBot
             footClosestPoint = footCollider != null ? footCollider.ClosestPoint(ballCenter) : transform.position;
             ballClosestPoint = ballCollider.ClosestPoint(footClosestPoint);
             distance = Vector3.Distance(footClosestPoint, ballClosestPoint);
+        }
+
+        private static void BuildPredictedClosestPointPair(
+            Collider ballCollider,
+            Vector3 boxCenter,
+            Quaternion boxRotation,
+            Vector3 halfExtents,
+            out Vector3 footClosestPoint,
+            out Vector3 ballClosestPoint,
+            out float distance)
+        {
+            Vector3 ballCenter = ballCollider.attachedRigidbody != null
+                ? ballCollider.attachedRigidbody.worldCenterOfMass
+                : ballCollider.bounds.center;
+
+            footClosestPoint = ClosestPointOnOrientedBox(ballCenter, boxCenter, boxRotation, halfExtents);
+            ballClosestPoint = ballCollider.ClosestPoint(footClosestPoint);
+            distance = Vector3.Distance(footClosestPoint, ballClosestPoint);
+        }
+
+        private static Vector3 ClosestPointOnOrientedBox(Vector3 point, Vector3 boxCenter, Quaternion boxRotation, Vector3 halfExtents)
+        {
+            Quaternion inverseRotation = Quaternion.Inverse(boxRotation);
+            Vector3 local = inverseRotation * (point - boxCenter);
+            local.x = Mathf.Clamp(local.x, -halfExtents.x, halfExtents.x);
+            local.y = Mathf.Clamp(local.y, -halfExtents.y, halfExtents.y);
+            local.z = Mathf.Clamp(local.z, -halfExtents.z, halfExtents.z);
+            return boxCenter + boxRotation * local;
         }
 
         private string DescribeContactZone(Collider contactCollider)
@@ -1119,6 +1252,8 @@ namespace SoccerBot
 
             DrawBoxGizmo(transform, _footColliderCenter, _footColliderSize, new Color(0.1f, 0.9f, 1f, 0.85f));
             DrawCapsuleGizmo(transform, _shinColliderCenter, _shinColliderRadius, _shinColliderHeight, new Color(1f, 0.8f, 0.1f, 0.85f));
+            if (_enableProximityContactProbe && _proximityProbePadding > 0f)
+                DrawBoxGizmo(transform, _footColliderCenter, _footColliderSize + Vector3.one * (_proximityProbePadding * 2f), new Color(1f, 1f, 1f, 0.45f));
 
             if (!_useFootContactZones)
                 return;

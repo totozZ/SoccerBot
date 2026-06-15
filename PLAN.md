@@ -1,6 +1,6 @@
 # SoccerBot 进度速查
 
-> 更新时间：2026-06-14  
+> 更新时间：2026-06-15
 > 规则：每次功能变动或 bug 修复后，默认同步更新本文件、[docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 和对应详细设计文档；不需要用户额外提醒。
 
 ## 当前结论
@@ -16,7 +16,7 @@
 | 优先级 | 项目 | 状态 | 说明 |
 |---|---|---|---|
 | P0 | 简易场上 AI 状态机 | 完成一版，待复测调参 | `FieldAIController` 已接入队友接应、对手追球/低概率截传、守门员横移/概率扑救，并输出压力/支援/覆盖读数影响结算 |
-| P0.5 | Quest 脚部 hitbox / 触球调校 | 进行中 | 调整脚部碰撞体、offset、触发距离和冲量，让“看见碰到球”稳定变成有效触球 |
+| P0.5 | Quest 脚部 hitbox / 触球调校 | 进行中，已加补触发 | 调整脚部碰撞体、offset、触发距离和冲量；`TrackedLegController` 已加入最近点 proximity probe，缓解“看见碰到球但没触发” |
 | P1 | LLM AI Coach 训练闭环 | 已接入 MVP | 回合数据记录、TrainingSummaryJson、本地 HTTP 分析、ScorePanel AI 反馈和离线 fallback |
 | P1.5 | 免费资源小人基础动态 / 跑步动画层 | 未开始 | 先检查免费小人是否有骨骼/动画；有则接 Animator，无则做程序化待机、跑步摆动、守门员侧扑假动作 |
 | P2 | 演示画面优化 | 进行中 | 黄昏天空、草坪材质、进球反馈、看台氛围 |
@@ -34,7 +34,7 @@
 | 完成一版 | P8.5 | 简易队友 / 对手 / 守门员状态机 AI | 见 [项目状态总览](docs/PROJECT_STATUS.md) |
 | 已接入 MVP | P8.6 | LLM AI Coach 训练闭环 | 见 [项目状态总览](docs/PROJECT_STATUS.md) |
 | 未开始 | P1.5 | 免费资源小人基础动态 / 跑步动画层 | 见 [演示画面优化](docs/DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
-| 原型接入 | Quest 脚部交互 | 手柄驱动腿/脚、物理球交互、边界/球门判定 | 见 [Quest 手柄当腿脚设计](docs/QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
+| 进行中 | Quest 脚部交互 | 手柄驱动腿/脚、物理球交互、proximity 补触发、F2 调参窗、边界/球门判定 | 见 [Quest 手柄当腿脚设计](docs/QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 | 进行中 | P9.5 | 黄昏天空、草坪材质、进球反馈、看台氛围 | 见 [演示画面优化](docs/DEMO_VISUAL_ART_OPTIMIZATION_PLAN.md) |
 | 未完成 | P9 | Quest 性能专项：72fps、Draw Call、APK 体积 | 待 P9.5 和脚部交互稳定后集中做 |
 | 未完成 | P10 | 2-3 分钟演示视频拍摄和剪辑 | 等画面与交互稳定后启动 |
@@ -44,7 +44,7 @@
 ## 下一步
 
 1. P0：Play Mode / Quest Link 复测 `FieldAIController` 的传球压力、队友支援、门将覆盖读数是否和实际站位一致，并继续调追球速度、截传概率、扑救概率和队友接应位置。
-2. P0：用 Quest Link / APK 复测脚部触球，优先解决“可见脚碰到球但触发不稳定”和“传球后球偶发回中心/半陷地面”。
+2. P0：用 Quest Link / APK 复测脚部触球，重点验证新增 proximity 补触发是否减少漏触；用 F2 调参窗微调 `Assist padding`、`Assist distance`、脚碰撞体和冲量；继续定位“传球后球偶发回中心/半陷地面”。
 3. P1：联调本地 `POST http://localhost:8000/analyze` AI Coach 服务，确认 JSON 请求/响应格式。
 4. P1.5：盘点免费小人资源是否带 Humanoid 骨骼/动画 clip；优先接 Idle/Run/Save/Celebrate，静态模型则做低成本程序化摆动。
 5. P2：执行演示画面优化，先做黄昏天空、草坪材质、进球反馈。
