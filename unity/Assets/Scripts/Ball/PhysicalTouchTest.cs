@@ -98,14 +98,15 @@ namespace SoccerBot
                 return;
 
             const float width = 560f;
-            const float height = 144f;
+            const float height = 168f;
             Rect rect = new Rect(18f, 18f, width, height);
             GUI.Box(rect, GUIContent.none);
             GUI.Label(new Rect(rect.x + 12f, rect.y + 10f, width - 24f, 22f), "Physical Touch Test  |  Press R to reset ball");
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 38f, width - 24f, 22f), _lastContactSummary);
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 66f, width - 24f, 22f), _lastClosestSummary);
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 94f, width - 24f, 22f), _lastImpulseSummary);
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 122f, width - 24f, 18f), $"Ball velocity: {FormatVector(_ballBody != null ? _ballBody.linearVelocity : Vector3.zero)}");
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 38f, width - 24f, 22f), GetLegTrackingSummary());
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 66f, width - 24f, 22f), _lastContactSummary);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 94f, width - 24f, 22f), _lastClosestSummary);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 122f, width - 24f, 22f), _lastImpulseSummary);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 150f, width - 24f, 18f), $"Ball velocity: {FormatVector(_ballBody != null ? _ballBody.linearVelocity : Vector3.zero)}");
         }
 
         [ContextMenu("Enter Test Mode")]
@@ -478,6 +479,22 @@ namespace SoccerBot
                 return true;
 
             return data.BallCollider.transform == _ball.transform || data.BallCollider.transform.IsChildOf(_ball.transform);
+        }
+
+        private string GetLegTrackingSummary()
+        {
+            if (_legRig == null)
+                return "Leg tracking: rig missing";
+
+            return $"Leg tracking: L={FormatLegTracking(_legRig.LeftLeg)}  R={FormatLegTracking(_legRig.RightLeg)}";
+        }
+
+        private static string FormatLegTracking(TrackedLegController leg)
+        {
+            if (leg == null)
+                return "missing";
+
+            return leg.HasTracking ? $"on {leg.FootVelocity.magnitude:0.00}m/s" : "no input";
         }
 
         private void DrawRecentContact()

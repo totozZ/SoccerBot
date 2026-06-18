@@ -1356,7 +1356,9 @@ namespace SoccerBot
 
         public bool TryResolveGoalkeeperSave(string reason)
         {
-            if (!_isMatchRunning || _rallyResolved || CurrentPhase != Phase.Shot)
+            if (!_isMatchRunning || _rallyResolved)
+                return false;
+            if (CurrentPhase != Phase.Shot && CurrentPhase != Phase.Possession)
                 return false;
 
             StopActiveShotRoutine();

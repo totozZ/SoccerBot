@@ -171,6 +171,22 @@ VR 手柄是手，不是脚。
 - 状态读数：对手计算 `PassPressure01`，队友计算 `TeammateSupport01`，守门员计算 `GoalkeeperCoverage01`；这些读数会影响传球到队友后的被断概率、进球概率和门将扑救概率。
 - 验证：Unity 6000.4.7f1 打开的 Editor 已完成脚本重编译且无 `error CS`；batchmode 因当前项目已有 Editor 进程占用返回失败码，未发现本次代码编译错误。当前项目测试文件仍在预定义程序集下，命令行 Test Runner 需要后续 asmdef/runtime assembly 迁移后才能真正发现并执行 EditMode 测试。
 
+### 2026-06-18 AI 状态机增强
+
+- `FieldAIController` 继续保持轻量 MonoBehaviour 状态机，不引入 NavMesh / 行为树。
+- 对手在 Possession 阶段会区分：
+  - 玩家仍持球：压迫球/玩家附近空间。
+  - 球离脚但没有明显传向队友：追散球。
+  - 球速和方向显示正在传向队友，或传球压力读数较高：切到 `MarkingReceiver`，盯接应点/传球线路。
+- 守门员新增 `IsShotThreat(...)` 识别，物理射门即使仍处在 `Possession` 阶段，也能进入 tracking/save 判定；`MatchFlowController.TryResolveGoalkeeperSave(...)` 现在允许在 `Possession` 和 `Shot` 两个阶段消费扑救。
+- 状态机现在订阅 `RecoveryTriggered`、`RecoveryResolved` 和 `FootContactRecorded`，让 Recovery、脚触球、射门威胁能直接推动状态切换，而不是完全依赖下一帧轮询。
+- 新增可测试静态计算：
+  - `IsShotThreat(...)`
+  - `IsMovingTowardTarget(...)`
+  - `EvaluatePassPressure(...)`
+  - `BuildTeammateSupportTarget(...)`
+- `FieldAIControllerTests` 已补充上述计算的 EditMode 测试；`dotnet build unity/Assembly-CSharp.csproj --no-restore` 通过，0 errors，剩余为项目已有 Unity/XRI 示例警告和 Inspector 字段未赋值警告。
+
 待复测：
 
 - PC Play Mode 观察对手是否太容易截断机器人来球，以及 `PassPressure01` 高时是否真的来自对手贴近传球线/接应点。

@@ -49,9 +49,15 @@ namespace SoccerBot
         [SerializeField, Range(1f, 14f)] private float _goalkeeperTurnSpeed = 8f;
         [SerializeField, Range(0.4f, 3f)] private float _goalkeeperLaneHalfWidth = 1.35f;
         [SerializeField, Range(0.2f, 3f)] private float _goalkeeperSaveRadius = 1.15f;
+        [SerializeField, Range(0.1f, 8f)] private float _goalkeeperSaveMinBallSpeed = 1.25f;
         [SerializeField, Range(0f, 1f)] private float _goalkeeperSaveChance = 0.28f;
         [SerializeField, Range(0.2f, 2f)] private float _goalkeeperCoverageSaveMultiplier = 1.25f;
         [SerializeField, Range(-1f, 1f)] private float _shotTowardGoalMinDot = 0.25f;
+
+        [Header("State Machine")]
+        [SerializeField, Range(0f, 1f)] private float _receiverMarkPressureThreshold = 0.42f;
+        [SerializeField, Range(0.1f, 8f)] private float _teammatePassReadMinSpeed = 0.7f;
+        [SerializeField, Range(-1f, 1f)] private float _teammatePassReadMinDot = 0.45f;
 
         [Header("Runtime Readouts")]
         [SerializeField, Range(0f, 1f)] private float _passPressure01;
@@ -131,7 +137,10 @@ namespace SoccerBot
             flow.PhaseChanged += HandlePhaseChanged;
             flow.PassStarted += HandlePassStarted;
             flow.ReceiveResolved += HandleReceiveResolved;
+            flow.RecoveryTriggered += HandleRecoveryTriggered;
+            flow.RecoveryResolved += HandleRecoveryResolved;
             flow.ShotAttempted += HandleShotAttempted;
+            flow.FootContactRecorded += HandleFootContactRecorded;
             flow.RoundResolved += HandleRoundResolved;
         }
 
@@ -140,7 +149,10 @@ namespace SoccerBot
             flow.PhaseChanged -= HandlePhaseChanged;
             flow.PassStarted -= HandlePassStarted;
             flow.ReceiveResolved -= HandleReceiveResolved;
+            flow.RecoveryTriggered -= HandleRecoveryTriggered;
+            flow.RecoveryResolved -= HandleRecoveryResolved;
             flow.ShotAttempted -= HandleShotAttempted;
+            flow.FootContactRecorded -= HandleFootContactRecorded;
             flow.RoundResolved -= HandleRoundResolved;
         }
 
@@ -203,11 +215,43 @@ namespace SoccerBot
                 SetOpponentState(OpponentState.PressingBall);
         }
 
+        private void HandleRecoveryTriggered()
+        {
+            SetOpponentState(OpponentState.PressingBall);
+            SetTeammateState(TeammateState.HoldingSupport);
+        }
+
+        private void HandleRecoveryResolved(bool success)
+        {
+            if (success)
+            {
+                SetOpponentState(OpponentState.HoldingShape);
+                SetTeammateState(TeammateState.OfferingAngle);
+            }
+            else
+            {
+                SetOpponentState(OpponentState.Intercepting);
+                SetTeammateState(TeammateState.WatchingShot);
+            }
+        }
+
         private void HandleShotAttempted(float power01, Vector3 direction)
         {
             SetTeammateState(TeammateState.PreparingShot);
             SetGoalkeeperState(GoalkeeperState.TrackingBall);
             _goalkeeperSaveRolled = false;
+        }
+
+        private void HandleFootContactRecorded(FootContactData data)
+        {
+            if (_flow == null || _flow.CurrentPhase != MatchFlowController.Phase.Possession)
+                return;
+
+            if (IsShotThreat(data.FootVelocity, GetAttackForward(), _goalkeeperSaveMinBallSpeed, _shotTowardGoalMinDot) ||
+                IsShotThreat(_estimatedBallVelocity, GetAttackForward(), _goalkeeperSaveMinBallSpeed, _shotTowardGoalMinDot))
+            {
+                SetGoalkeeperState(GoalkeeperState.TrackingBall);
+            }
         }
 
         private void HandleRoundResolved(Scenario scenario, string outcomeLabelOverride)
@@ -297,11 +341,24 @@ namespace SoccerBot
         {
             CaptureHomes(false);
             Vector3 ballPos = GetBallPosition();
+            bool ballOwnedByPlayer = IsBallOwnedByPlayer();
+            Vector3 ballVelocity = Flatten(_estimatedBallVelocity);
+            bool teammatePassThreat = IsMovingTowardTarget(
+                ballVelocity,
+                ballPos,
+                _teammateTransform != null ? _teammateTransform.position : ballPos,
+                _teammatePassReadMinSpeed,
+                _teammatePassReadMinDot);
+            bool shotThreat = IsShotThreat(
+                ballVelocity,
+                GetAttackForward(),
+                _goalkeeperSaveMinBallSpeed,
+                _shotTowardGoalMinDot);
 
             if (_enableOpponentAI && _opponentTransform != null)
             {
                 UpdatePassPressure(ballPos);
-                bool markReceiver = !IsBallOwnedByPlayer() && _passPressure01 > 0.42f;
+                bool markReceiver = !ballOwnedByPlayer && (teammatePassThreat || _passPressure01 > _receiverMarkPressureThreshold);
                 SetOpponentState(markReceiver ? OpponentState.MarkingReceiver : OpponentState.PressingBall);
                 Vector3 target = markReceiver ? BuildOpponentPassLaneTarget(ballPos) : ClampAwayFromPlayer(ballPos);
                 target.y = _opponentHome.y;
@@ -315,7 +372,7 @@ namespace SoccerBot
 
             if (_enableTeammateAI)
             {
-                if (IsBallOwnedByPlayer())
+                if (ballOwnedByPlayer)
                     MoveTeammateToSupport(true);
                 else
                     MoveTeammateToReceive(ballPos);
@@ -325,7 +382,7 @@ namespace SoccerBot
                 _teammateSupport01 = 0f;
             }
 
-            TickGoalkeeperTrack(false);
+            TickGoalkeeperTrack(shotThreat);
         }
 
         private void TickShot()
@@ -446,8 +503,7 @@ namespace SoccerBot
             if (_flow == null || _goalkeeperTransform == null || _goalkeeperSaveRolled)
                 return;
 
-            Vector3 flatVelocity = Flatten(_estimatedBallVelocity);
-            if (!IsMovingTowardGoal(flatVelocity, GetAttackForward(), _shotTowardGoalMinDot))
+            if (!IsShotThreat(_estimatedBallVelocity, GetAttackForward(), _goalkeeperSaveMinBallSpeed, _shotTowardGoalMinDot))
                 return;
             if (FlatDistance(_goalkeeperTransform.position, ballPos) > _goalkeeperSaveRadius)
                 return;
@@ -538,11 +594,15 @@ namespace SoccerBot
             float receiverDistance = FlatDistance(_opponentTransform.position, _teammateTransform.position);
             float laneRadius = Mathf.Max(_opponentInterceptRadius + 0.01f, _passPressureLaneRadius);
             float receiverRadius = Mathf.Max(_opponentInterceptRadius + 0.01f, _passPressureReceiverRadius);
-            float lanePressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, laneRadius, laneDistance);
-            float receiverPressure = 1f - Mathf.InverseLerp(_opponentInterceptRadius, receiverRadius, receiverDistance);
             float ballSpeed01 = Mathf.InverseLerp(0.2f, 3f, Flatten(_estimatedBallVelocity).magnitude);
             float ownershipScale = IsBallOwnedByPlayer() ? 0.55f : Mathf.Lerp(0.75f, 1.15f, ballSpeed01);
-            _passPressure01 = Mathf.Clamp01(Mathf.Max(lanePressure, receiverPressure) * ownershipScale);
+            _passPressure01 = EvaluatePassPressure(
+                laneDistance,
+                receiverDistance,
+                _opponentInterceptRadius,
+                laneRadius,
+                receiverRadius,
+                ownershipScale);
         }
 
         private Vector3 BuildOpponentPassLaneTarget(Vector3 ballPos)
@@ -559,10 +619,12 @@ namespace SoccerBot
         private Vector3 GetTeammateSupportTarget(Vector3 origin)
         {
             Vector3 forward = GetAttackForward();
-            Vector3 right = GetAttackRight();
-            Vector3 target = origin + right * _teammateSupportSideOffset + forward * _teammateSupportForwardOffset;
-            target.y = _teammateHome.y;
-            return target;
+            return BuildTeammateSupportTarget(
+                origin,
+                forward,
+                _teammateSupportSideOffset,
+                _teammateSupportForwardOffset,
+                _teammateHome.y);
         }
 
         private void UpdateTeammateSupport(Vector3 target)
@@ -717,6 +779,59 @@ namespace SoccerBot
                 return false;
 
             return Vector3.Dot(flatVelocity.normalized, flatForward.normalized) >= minDot;
+        }
+
+        public static bool IsShotThreat(Vector3 velocity, Vector3 attackForward, float minSpeed, float minDot)
+        {
+            Vector3 flatVelocity = Flatten(velocity);
+            if (flatVelocity.magnitude < Mathf.Max(0f, minSpeed))
+                return false;
+
+            return IsMovingTowardGoal(flatVelocity, attackForward, minDot);
+        }
+
+        public static bool IsMovingTowardTarget(Vector3 velocity, Vector3 origin, Vector3 target, float minSpeed, float minDot)
+        {
+            Vector3 flatVelocity = Flatten(velocity);
+            Vector3 toTarget = Flatten(target - origin);
+            if (flatVelocity.magnitude < Mathf.Max(0f, minSpeed) || toTarget.sqrMagnitude < 0.0001f)
+                return false;
+
+            return Vector3.Dot(flatVelocity.normalized, toTarget.normalized) >= minDot;
+        }
+
+        public static float EvaluatePassPressure(
+            float laneDistance,
+            float receiverDistance,
+            float interceptRadius,
+            float laneRadius,
+            float receiverRadius,
+            float ownershipScale)
+        {
+            float minRadius = Mathf.Max(0f, interceptRadius);
+            float safeLaneRadius = Mathf.Max(minRadius + 0.01f, laneRadius);
+            float safeReceiverRadius = Mathf.Max(minRadius + 0.01f, receiverRadius);
+            float lanePressure = 1f - Mathf.InverseLerp(minRadius, safeLaneRadius, Mathf.Max(0f, laneDistance));
+            float receiverPressure = 1f - Mathf.InverseLerp(minRadius, safeReceiverRadius, Mathf.Max(0f, receiverDistance));
+            return Mathf.Clamp01(Mathf.Max(lanePressure, receiverPressure) * Mathf.Max(0f, ownershipScale));
+        }
+
+        public static Vector3 BuildTeammateSupportTarget(
+            Vector3 origin,
+            Vector3 attackForward,
+            float sideOffset,
+            float forwardOffset,
+            float targetY)
+        {
+            Vector3 forward = Flatten(attackForward);
+            if (forward.sqrMagnitude < 0.0001f)
+                forward = Vector3.forward;
+            forward.Normalize();
+
+            Vector3 right = new Vector3(forward.z, 0f, -forward.x).normalized;
+            Vector3 target = origin + right * sideOffset + forward * forwardOffset;
+            target.y = targetY;
+            return target;
         }
     }
 }

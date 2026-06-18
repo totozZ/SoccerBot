@@ -264,7 +264,7 @@
 1. 是否两个手柄都要显示为腿，还是只把右手柄映射成主射门脚，左手柄暂时作为支撑脚？
 A: 两个都是腿比较符合直觉
 2. 手柄握在手里时，脚模型应该直接出现在手柄位置，还是需要一个“手柄到脚”的固定偏移，让玩家拿手柄模拟脚的位置？
-A: 直接出现在手柄位置比较符合直觉。Quest Link 实测后，当前手柄到脚的默认偏移量为 `(0, -0.15, 0.16)`，整体腿/脚显示缩放为 `0.5`。
+A: 直接出现在手柄位置比较符合直觉。Quest Link 实测后，当前手柄到脚的默认偏移量为 `(0, -0.15, 0.16)`，整体腿/脚显示缩放为 `0.56`。
 3. 射门阶段是否必须按住右扳机才允许触球，还是任何高速脚部碰撞都可触发？
 A: 任何高速脚部碰撞都可触发，右扳机只是作为射门意图 gating，不直接决定球飞出去。
 4. 球是否要完全物理化，还是先保持当前剧情球路，只在玩家交互窗口短暂物理化？
@@ -288,7 +288,7 @@ A: 完全物理化
 - Current Quest Link calibration from headset testing:
   - Left foot offset: `(0, -0.15, 0.16)`
   - Right foot offset: `(0, -0.15, 0.16)`
-  - `Leg Scale = 0.5`
+  - `Leg Scale = 0.56`
   - `Live Update In Play Mode = true`
 - Runtime tuning should be done on `Player -> QuestControllerLegRig`, not directly on generated `LeftTrackedLeg` / `RightTrackedLeg` transforms. Generated leg transforms are continuously driven by tracking and will override manual Transform edits.
 - `QuestControllerLegRig` now exposes shared size controls:
@@ -321,6 +321,11 @@ A: 完全物理化
 
 ### Latest Fix Notes
 
+- 2026-06-18 physical-touch diagnostics / stability pass:
+  - `TrackedLegController.Configure(...)` now ensures its `Rigidbody` and tracking references are initialized even when a scene-authored or inactive leg is configured before `Awake`.
+  - Runtime default boot/sock/stripe materials are reused instead of recreated on every live tuning apply, reducing material churn during F2 tuning.
+  - `QuestControllerLegRig` now prefers existing `TrackedLegController` children under the current rig and skips legs owned by another rig, reducing accidental cross-binding if a second rig appears.
+  - `PhysicalTouchTest` overlay now shows left/right leg tracking state and current foot speed, so Quest Link tests can distinguish "controller not bound" from "tracked but not contacting".
 - 2026-06-15 proximity contact assist pass:
   - `TrackedLegController` now performs a small `Physics.OverlapBoxNonAlloc` probe around the predicted foot box during `FixedUpdate`.
   - If the predicted foot box and ball are within the configured closest-point distance, it publishes the normal `FootContactData` path with contact zone `FootBoxProximity`.
@@ -363,7 +368,7 @@ A: 完全物理化
   - Ensures the current `BallController` has `PhysicalBallInteractor`.
   - Routes contacts away from `MatchFlowController` by default so every valid kick can produce a physical impulse.
   - Narrows tracked-leg collision filtering to the ball's layer and puts the temporary test ground on `Ignore Raycast` to reduce contact noise.
-  - Shows a small debug overlay with latest contact speed, power, accuracy, impulse direction, and ball velocity.
+  - Shows a small debug overlay with left/right tracking state, latest contact speed, power, accuracy, impulse direction, and ball velocity.
   - Logs `[PhysicalTouchTest]`, `[TrackedLeg]`, and `[PhysicalBall]` lines for console capture.
 - `PhysicalBallInteractor` now exposes:
   - `ConfigureRouting(...)` for runtime test/tuning modes.
@@ -413,12 +418,14 @@ A: 完全物理化
   - 默认偏移为 `(0, -0.15, 0.16)`，左右脚可以分别在 Inspector 调整 `poseOffsetPosition` / `poseOffsetEuler`。
   - 自动创建简化可视模型：脚部 box、小腿 capsule、左右脚颜色区分。
   - 自动配置脚部 `Rigidbody`、`BoxCollider` 和小腿 `CapsuleCollider`，接触球时发送 `FootContactData`。
+  - runtime 默认材质在调参过程中复用同一组实例，避免频繁滑动 F2 面板时不断创建新材质。
 
 - `unity/Assets/Scripts/Player/QuestControllerLegRig.cs`
   - 运行时创建 `LeftTrackedLeg` / `RightTrackedLeg`。
   - 手柄位置默认按“手柄相对 HMD 的 tracking pose”映射到实际渲染相机 `Player/FpsAnchor/FpsCamera` 附近，避免 XR Origin 与玩家相机空间不一致时脚飘到天上。
   - 当前 P0 默认 `enableFootBallInteraction = true` 且自动给球挂 `PhysicalBallInteractor`，用于优先验证脚部触球链路。
-  - 当前默认 `Leg Scale = 0.5`，并支持 Play Mode 中从 `QuestControllerLegRig` 实时同步 offset/scale/size 到左右脚。
+  - 当前默认 `Leg Scale = 0.56`，并支持 Play Mode 中从 `QuestControllerLegRig` 实时同步 offset/scale/size 到左右脚。
+  - 查找已有左右脚时优先使用当前 rig 层级内的 leg，避免多 rig 或临时测试对象互相抢绑定。
   - 如需回到纯显示调试，可在 Inspector 关闭 `enableFootBallInteraction` 和 `ensurePhysicalBallInteractor`。
 
 - `unity/Assets/Scripts/Ball/PhysicalBallInteractor.cs`

@@ -224,7 +224,7 @@ namespace SoccerBot
             Vector3 poseOffsetEuler)
         {
             if (current == null)
-                current = FindExistingLeg(handedness);
+                current = FindExistingLeg(handedness, transform);
 
             if (current == null)
             {
@@ -283,15 +283,32 @@ namespace SoccerBot
                 _proximityProbeMinSpeed);
         }
 
-        private static TrackedLegController FindExistingLeg(TrackedLegHandedness handedness)
+        private static TrackedLegController FindExistingLeg(TrackedLegHandedness handedness, Transform rigRoot)
         {
+            if (rigRoot != null)
+            {
+                var childLegs = rigRoot.GetComponentsInChildren<TrackedLegController>(true);
+                foreach (var leg in childLegs)
+                {
+                    if (leg != null && leg.Handedness == handedness)
+                        return leg;
+                }
+            }
+
             var legs = FindObjectsByType<TrackedLegController>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
 
             foreach (var leg in legs)
             {
-                if (leg != null && leg.Handedness == handedness)
+                if (leg == null || leg.Handedness != handedness)
+                    continue;
+
+                var ownerRig = leg.GetComponentInParent<QuestControllerLegRig>();
+                if (ownerRig != null && rigRoot != null && ownerRig.transform != rigRoot)
+                    continue;
+
+                if (rigRoot == null || leg.transform.IsChildOf(rigRoot) || ownerRig == null)
                     return leg;
             }
 

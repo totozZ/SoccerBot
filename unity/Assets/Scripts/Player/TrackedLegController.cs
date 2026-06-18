@@ -160,6 +160,9 @@ namespace SoccerBot
         private Collider _lastPublishedBallCollider;
         private TrackedLegContactZone[] _contactZones = Array.Empty<TrackedLegContactZone>();
         private readonly Collider[] _proximityProbeResults = new Collider[8];
+        private Material _bootMaterial;
+        private Material _sockMaterial;
+        private Material _accentMaterial;
 
         public TrackedLegHandedness Handedness => _handedness;
         public Vector3 FootVelocity => _latestWorldVelocity;
@@ -216,6 +219,11 @@ namespace SoccerBot
                 _loggedTrackingDiagnostics = false;
                 RecreateInputActionsIfEnabled();
             }
+
+            if (_trackingSpaceRoot == null || _renderCamera == null)
+                ResolveTrackingSpace();
+
+            EnsureBody();
             EnsureColliders();
             if (_buildDefaultVisual)
                 EnsureDefaultVisual();
@@ -249,6 +257,13 @@ namespace SoccerBot
             DisposeAction(ref _hmdRotationAction);
             _hasTracking = false;
             _hasSample = false;
+        }
+
+        private void OnDestroy()
+        {
+            DestroyTrackedMaterial(ref _bootMaterial);
+            DestroyTrackedMaterial(ref _sockMaterial);
+            DestroyTrackedMaterial(ref _accentMaterial);
         }
 
         private void Update()
@@ -332,6 +347,8 @@ namespace SoccerBot
         {
             if (_footBody == null)
                 _footBody = GetComponent<Rigidbody>();
+            if (_footBody == null)
+                _footBody = gameObject.AddComponent<Rigidbody>();
 
             _footBody.isKinematic = true;
             _footBody.useGravity = false;
@@ -465,11 +482,12 @@ namespace SoccerBot
             _visualRoot = new GameObject("TrackedLegVisual").transform;
             _visualRoot.SetParent(transform, false);
 
-            Material bootMaterial = CreateMaterial(
+            Material bootMaterial = GetOrCreateTrackedMaterial(
+                ref _bootMaterial,
                 _handedness == TrackedLegHandedness.Left ? "Left Tracked Boot" : "Right Tracked Boot",
                 _handedness == TrackedLegHandedness.Left ? new Color(0.05f, 0.28f, 0.95f, 1f) : new Color(0.95f, 0.12f, 0.08f, 1f));
-            Material sockMaterial = CreateMaterial("Tracked Sock", new Color(0.92f, 0.95f, 1f, 1f));
-            Material accentMaterial = CreateMaterial("Tracked Boot Stripe", new Color(1f, 0.86f, 0.12f, 1f));
+            Material sockMaterial = GetOrCreateTrackedMaterial(ref _sockMaterial, "Tracked Sock", new Color(0.92f, 0.95f, 1f, 1f));
+            Material accentMaterial = GetOrCreateTrackedMaterial(ref _accentMaterial, "Tracked Boot Stripe", new Color(1f, 0.86f, 0.12f, 1f));
 
             var foot = CreateBootVisual("Foot");
             foot.name = "Foot";
@@ -535,11 +553,12 @@ namespace SoccerBot
             if (_visualRoot == null || _visualRoot.name != "TrackedLegVisual")
                 return;
 
-            Material bootMaterial = CreateMaterial(
+            Material bootMaterial = GetOrCreateTrackedMaterial(
+                ref _bootMaterial,
                 _handedness == TrackedLegHandedness.Left ? "Left Tracked Boot" : "Right Tracked Boot",
                 _handedness == TrackedLegHandedness.Left ? new Color(0.05f, 0.28f, 0.95f, 1f) : new Color(0.95f, 0.12f, 0.08f, 1f));
-            Material sockMaterial = CreateMaterial("Tracked Sock", new Color(0.92f, 0.95f, 1f, 1f));
-            Material accentMaterial = CreateMaterial("Tracked Boot Stripe", new Color(1f, 0.86f, 0.12f, 1f));
+            Material sockMaterial = GetOrCreateTrackedMaterial(ref _sockMaterial, "Tracked Sock", new Color(0.92f, 0.95f, 1f, 1f));
+            Material accentMaterial = GetOrCreateTrackedMaterial(ref _accentMaterial, "Tracked Boot Stripe", new Color(1f, 0.86f, 0.12f, 1f));
 
             Transform foot = _visualRoot.Find("Foot");
             if (foot != null)
@@ -1089,6 +1108,32 @@ namespace SoccerBot
             if (shader == null) shader = Shader.Find("Standard");
             var material = new Material(shader) { name = name, color = color };
             return material;
+        }
+
+        private static Material GetOrCreateTrackedMaterial(ref Material material, string name, Color color)
+        {
+            if (material == null)
+            {
+                material = CreateMaterial(name, color);
+                return material;
+            }
+
+            material.name = name;
+            material.color = color;
+            return material;
+        }
+
+        private static void DestroyTrackedMaterial(ref Material material)
+        {
+            if (material == null)
+                return;
+
+            if (Application.isPlaying)
+                Destroy(material);
+            else
+                DestroyImmediate(material);
+
+            material = null;
         }
 
         private static void SetMaterial(GameObject go, Material material)
