@@ -94,6 +94,9 @@ namespace SoccerBot
         private float _lastOpponentStateChangedAt;
         private float _lastTeammateStateChangedAt;
         private float _lastGoalkeeperStateChangedAt;
+        private NpcAnimationPresenter _teammateAnimation;
+        private NpcAnimationPresenter _opponentAnimation;
+        private NpcAnimationPresenter _goalkeeperAnimation;
 
         public void Configure(
             MatchFlowController flow,
@@ -119,6 +122,7 @@ namespace SoccerBot
                 _subscribedFlow = _flow;
             }
 
+            EnsureAnimationPresenters();
             CaptureHomes(true);
             ResetRoundState();
         }
@@ -256,6 +260,14 @@ namespace SoccerBot
 
         private void HandleRoundResolved(Scenario scenario, string outcomeLabelOverride)
         {
+            if (scenario != null)
+            {
+                if (scenario.outcome == ScenarioOutcome.Score)
+                    _teammateAnimation?.TriggerCelebrate();
+                else if (scenario.outcome == ScenarioOutcome.Intercepted)
+                    _opponentAnimation?.TriggerCelebrate();
+            }
+
             ResetRoundState();
         }
 
@@ -686,8 +698,38 @@ namespace SoccerBot
 
             CurrentGoalkeeperState = state;
             _lastGoalkeeperStateChangedAt = Time.time;
+            if (state == GoalkeeperState.Saving && _goalkeeperTransform != null)
+                _goalkeeperAnimation?.TriggerSave(GetBallPosition() - _goalkeeperTransform.position);
             if (_debugStateChanges)
                 Debug.Log($"[FieldAI] Goalkeeper -> {state}");
+        }
+
+        private void EnsureAnimationPresenters()
+        {
+            _teammateAnimation = EnsureAnimationPresenter(
+                _teammateTransform,
+                NpcAnimationPresenter.NpcRole.FieldPlayer);
+            _opponentAnimation = EnsureAnimationPresenter(
+                _opponentTransform,
+                NpcAnimationPresenter.NpcRole.FieldPlayer);
+            _goalkeeperAnimation = EnsureAnimationPresenter(
+                _goalkeeperTransform,
+                NpcAnimationPresenter.NpcRole.Goalkeeper);
+        }
+
+        private static NpcAnimationPresenter EnsureAnimationPresenter(
+            Transform actor,
+            NpcAnimationPresenter.NpcRole role)
+        {
+            if (actor == null)
+                return null;
+
+            NpcAnimationPresenter presenter = actor.GetComponent<NpcAnimationPresenter>();
+            if (presenter == null)
+                presenter = actor.gameObject.AddComponent<NpcAnimationPresenter>();
+
+            presenter.Configure(role);
+            return presenter;
         }
 
         private Vector3 GetAttackForward()

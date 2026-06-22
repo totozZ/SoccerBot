@@ -1,8 +1,8 @@
 # SoccerBot 演示画面与美术优化确认文档
 
-日期：2026-06-10  
-状态：待确认后执行  
-范围：只规划画面、美术、材质、灯光、角色基础动态、后处理、进球反馈与演示可读性；本文不改 Unity 资源。
+日期：2026-06-22
+状态：执行中；P1.5 角色基础动态已完成一版
+范围：记录画面、美术、材质、灯光、角色基础动态、后处理、进球反馈与演示可读性的计划和落地状态。
 
 ---
 
@@ -16,7 +16,7 @@
 |------|----------|------|
 | `PLAN.md` P1-P8 | 已勾选 | 核心场景、流程、VR 部署、基础视觉链路已完成 |
 | `docs/CORE_GAMEPLAY_REWORK_V1_2_DEMO_FEEDBACK.md` | 大部分已落地 | 接球提示、接球圈、即时反馈、射门加成提示已经进入代码；评分面板解释仍不完整 |
-| `PLAN.md` P1.5 免费资源小人基础动态 | 未开始 | 需要盘点免费小人是否有 Humanoid 骨骼/动画 clip；目标是让 AI 跑位有待机、跑步、扑救、庆祝等基础动势 |
+| `PLAN.md` P1.5 免费资源小人基础动态 | 完成一版，待 Play Mode / Quest 复测 | LowPolyPeople 自带 idle/walk/run/wave；已接实际速度驱动、门将程序化侧扑和无 Animator 动态兜底 |
 | `PLAN.md` P9.5 视觉演示打磨 | 未完成 | 已有灯光、观众、后处理、粒子骨架，但画面观感仍未达标 |
 | P9 性能优化 | 未完成 | 仍待 Quest 72fps / Draw Call / APK 体积专项验证 |
 | P10 演示视频 | 未完成 | 需等画面满意后再拍摄 |
@@ -114,7 +114,7 @@
 
 目标画面：马拉卡纳黄昏，天际从金橙到紫蓝，场内泛光灯已亮，草坪不黑，球和角色轮廓清楚。
 
-拟改内容：
+已完成内容：
 
 1. 新增 `DuskSkyboxBuilder` 或扩展 `LightingConfigurator`
    - 创建程序化 Gradient Skybox 材质。
@@ -318,26 +318,24 @@
 拟改内容：
 
 1. 资源盘点
-   - 检查当前免费小人模型是否有 `Animator`、Humanoid Rig、AnimationClip。
-   - 若已有可重定向动画，优先接 `Idle`、`Run/Jog`、`Save`、`Celebrate`。
-   - 若只是静态 mesh，则走低成本程序化动态。
+   - `normal`、`strong`、`stout` 三套 LowPolyPeople Controller 均包含 `idle`、`walk`、`run`、`wave`。
+   - 角色 prefab 自带 Animator 且 `applyRootMotion = false`，适合保留 `FieldAIController` 的根节点位移。
+   - 资源不含扑救 clip，因此门将侧扑采用程序化视觉叠加。
 
 2. Animator 方案
-   - 新增或复用一个轻量 `Animator Controller`。
-   - 参数建议：`Speed`、`IsGoalkeeper`、`Save`、`Celebrate`。
-   - `Animator.applyRootMotion = false`，角色位移仍由 AI/Flow 控制，动画只负责视觉。
+   - 新增 `NpcAnimationPresenter`，根据角色根节点实际平面速度自动切换 `idle` / `walk` / `run`。
+   - 复用已有 Controller，不复制动画资产，不新增 Animator Controller。
+   - 进球和拦截成功时复用 `wave` 作为短时庆祝反应。
 
 3. 程序化兜底方案
-   - 待机：身体轻微上下呼吸、头/上身朝球。
-   - 跑步：根据移动速度做上下起伏、左右摆臂、脚部前后摆动。
-   - 守门员：横移时小碎步，`Saving` 状态做一次快速侧扑/伸手假动作。
-   - 进球或失误：队友小跳庆祝，对手/守门员短暂失望或回头看球。
+   - 无 Animator 的模型按速度使用呼吸、上下起伏和身体前倾。
+   - 门将进入 `Saving` 时，根据来球左右方向对视觉子节点做快速位移、抬升、倾斜和恢复。
+   - 程序化动作只修改 `Model` 视觉子节点，不修改 AI 根节点、碰撞体或结算位置。
 
 4. 与 AI 状态机绑定
-   - `HoldingShape` / `HoldingSupport` / `Set` -> Idle。
-   - `ClosingPassLane` / `MarkingReceiver` / `PressingBall` / `OfferingAngle` / `ReceivingPass` -> Run/Jog。
-   - `Saving` -> Save。
-   - `WatchingShot` -> Watch/Celebrate/React。
+   - locomotion 不依赖状态枚举硬编码，而是读取实际移动速度，兼容 AI 移动和 `DoTeammateShot` 演出位移。
+   - `GoalkeeperState.Saving` 显式触发侧扑。
+   - `RoundResolved` 在进球或拦截时触发对应角色庆祝。
 
 验收标准：
 
@@ -349,9 +347,14 @@
 预计变更文件：
 
 - `unity/Assets/Scripts/Flow/FieldAIController.cs`
-- 可能新增 `unity/Assets/Scripts/Characters/CharacterMotionPresenter.cs`
-- 可能新增 `unity/Assets/Animations/*.controller`
-- 可能调整 `unity/Assets/Scenes/Main.unity`
+- `unity/Assets/Scripts/Flow/NpcAnimationPresenter.cs`
+- `unity/Assets/Tests/EditMode/FieldAIControllerTests.cs`
+
+验证状态：
+
+- Unity 6000.4.7f1 脚本编译通过，Console 0 error。
+- 三套 Animator Controller 的四个状态和 Trigger 已用 Unity Animator 查询确认。
+- EditMode 测试用例已补；当前 Unity Skills 处于 Auto 模式，TestRunner 仅允许 Bypass，待切换模式或关闭编辑器后执行。
 
 ---
 

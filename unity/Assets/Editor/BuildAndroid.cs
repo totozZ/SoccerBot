@@ -28,7 +28,16 @@ public static class BuildAndroid
         if (report.summary.result == BuildResult.Succeeded)
             Debug.Log($"[BuildAndroid] OK -> {apkPath} ({report.summary.totalSize / 1024 / 1024} MB)");
         else
-            EditorApplication.Exit(1);
+        {
+            var message = $"[BuildAndroid] FAILED: {report.summary.totalErrors} error(s), " +
+                          $"{report.summary.totalWarnings} warning(s). See Console or Editor.log for details.";
+            Debug.LogError(message);
+
+            if (Application.isBatchMode)
+                EditorApplication.Exit(1);
+            else
+                EditorUtility.DisplayDialog("Android build failed", message, "OK");
+        }
     }
 }
 #endif

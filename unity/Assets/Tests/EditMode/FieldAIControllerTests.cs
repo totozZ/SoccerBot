@@ -128,6 +128,18 @@ namespace SoccerBot.Tests
             Assert.That(target.y, Is.EqualTo(0.25f).Within(0.0001f));
             Assert.That(target.z, Is.EqualTo(5f).Within(0.0001f));
         }
+
+        [TestCase(0f, NpcAnimationPresenter.LocomotionState.Idle)]
+        [TestCase(0.4f, NpcAnimationPresenter.LocomotionState.Walk)]
+        [TestCase(1.2f, NpcAnimationPresenter.LocomotionState.Run)]
+        public void NpcLocomotion_MapsSpeedToReadableAnimation(
+            float speed,
+            NpcAnimationPresenter.LocomotionState expected)
+        {
+            Assert.That(
+                NpcAnimationPresenter.ClassifyLocomotion(speed, 0.08f, 0.9f),
+                Is.EqualTo(expected));
+        }
     }
 }
 #endif
