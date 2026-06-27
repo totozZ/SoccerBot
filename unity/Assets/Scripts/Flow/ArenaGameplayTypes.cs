@@ -116,6 +116,78 @@ namespace SoccerBot
         {
             return opponentDistance <= Mathf.Max(0f, contestRadius) && opponentDistance <= playerDistance + 0.15f;
         }
+
+        public static bool ShouldBlockServeProtectedAction(BallActionSource source, bool serveProtected)
+        {
+            return serveProtected && source == BallActionSource.AI;
+        }
+
+        public static bool CanReachBall(Vector3 actorPosition, Vector3 ballPosition, float flatRange, float verticalReach)
+        {
+            float dx = actorPosition.x - ballPosition.x;
+            float dz = actorPosition.z - ballPosition.z;
+            if ((dx * dx) + (dz * dz) > Mathf.Max(0f, flatRange) * Mathf.Max(0f, flatRange))
+                return false;
+
+            return Mathf.Abs(ballPosition.y - actorPosition.y) <= Mathf.Max(0f, verticalReach);
+        }
+
+        public static Vector3 CalculateSupportPosition(
+            Vector3 playerPosition,
+            Vector3 playerForward,
+            Vector3 playerRight,
+            float sideOffset,
+            float aheadOffset,
+            Vector3 driftOffset)
+        {
+            Vector3 forward = FlattenDirection(playerForward, Vector3.forward);
+            Vector3 right = FlattenDirection(playerRight, Vector3.right);
+            return playerPosition + right * sideOffset + forward * Mathf.Max(0f, aheadOffset) + driftOffset;
+        }
+
+        public static bool ShouldTeammateReceive(
+            PossessionOwner owner,
+            float flatDistance,
+            float ballSpeed,
+            float movingTowardTeammate01,
+            float receiveRange,
+            float maxReceiveSpeed)
+        {
+            if (owner == PossessionOwner.Teammate)
+                return true;
+            if (owner != PossessionOwner.Free)
+                return false;
+            if (flatDistance > Mathf.Max(0f, receiveRange))
+                return false;
+            if (ballSpeed <= Mathf.Max(0f, maxReceiveSpeed))
+                return true;
+
+            return movingTowardTeammate01 > 0.35f && ballSpeed <= Mathf.Max(0f, maxReceiveSpeed) * 1.6f;
+        }
+
+        public static Vector3 ApplyRollingDamping(
+            Vector3 velocity,
+            bool grounded,
+            float secondsSinceImpulse,
+            float freeRollDelay,
+            float dampingPerSecond,
+            float stopSpeed,
+            float deltaTime)
+        {
+            if (!grounded || secondsSinceImpulse < Mathf.Max(0f, freeRollDelay) || dampingPerSecond <= 0f || deltaTime <= 0f)
+                return velocity;
+
+            Vector3 horizontal = new Vector3(velocity.x, 0f, velocity.z);
+            float speed = horizontal.magnitude;
+            if (speed <= Mathf.Max(0f, stopSpeed))
+                return new Vector3(0f, velocity.y, 0f);
+
+            horizontal *= Mathf.Exp(-dampingPerSecond * deltaTime);
+            if (horizontal.magnitude <= Mathf.Max(0f, stopSpeed))
+                horizontal = Vector3.zero;
+
+            return new Vector3(horizontal.x, velocity.y, horizontal.z);
+        }
     }
 
     public sealed class ArenaSessionClock

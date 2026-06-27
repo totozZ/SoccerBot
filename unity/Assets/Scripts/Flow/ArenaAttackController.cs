@@ -25,17 +25,30 @@ namespace SoccerBot
         [SerializeField] private float _stuckSpeed = 0.08f;
 
         [Header("Arena")]
-        [SerializeField] private float _wallHeight = 2.2f;
+        [SerializeField] private float _wallHeight = 4f;
+        [SerializeField] private float _wallVisibleHeight = 0.55f;
         [SerializeField] private float _wallThickness = 0.18f;
         [SerializeField] private float _wallBounce = 0.7f;
         [SerializeField] private float _goalWidth = 3.5f;
         [SerializeField] private float _goalHeight = 1.6f;
 
+        [Header("VR Presentation")]
+        [SerializeField] private float _vrPresentationScale = 0.5f;
+        [SerializeField] private float _vrCameraHeight = 0.65f;
+
         [Header("AI")]
-        [SerializeField] private float _teammateSpeed = 2.5f;
-        [SerializeField] private float _opponentSpeed = 2.35f;
-        [SerializeField] private float _goalkeeperSpeed = 2.8f;
+        [SerializeField] private float _teammateSpeed = 0.725f;
+        [SerializeField] private float _opponentSpeed = 0.775f;
+        [SerializeField] private float _goalkeeperSpeed = 0.875f;
         [SerializeField] private float _aiActionCooldown = 0.75f;
+        [SerializeField] private float _aiReachHeight = 0.85f;
+        [SerializeField] private float _teammateSupportSideOffset = -2.2f;
+        [SerializeField] private float _teammateSupportAheadOffset = 2.35f;
+        [SerializeField] private float _teammateReceiveRange = 1.35f;
+        [SerializeField] private float _teammateReceiveMaxSpeed = 3.2f;
+        [SerializeField] private float _teammateDriftInterval = 1.35f;
+        [SerializeField, Range(0f, 1f)] private float _teammateDriftChance = 0.22f;
+        [SerializeField] private float _teammateDriftRadius = 0.45f;
 
         public ArenaRoundState State { get; private set; } = ArenaRoundState.Resetting;
         public int Score { get; private set; }
@@ -68,6 +81,9 @@ namespace SoccerBot
         private GUIStyle _titleStyle;
         private GUIStyle _hudStyle;
         private GUIStyle _smallStyle;
+        private bool _vrPresentationApplied;
+        private float _teammateDriftReadyAt;
+        private Vector3 _teammateDriftOffset;
 
         private IEnumerator Start()
         {
@@ -86,6 +102,7 @@ namespace SoccerBot
             BuildArenaBoundary();
             ConfigurePlayer();
             ConfigureBall();
+            ApplyVrPresentationScale();
             ConfigureNpcAnimation();
 
             _clock = new ArenaSessionClock(_sessionDuration);
@@ -117,6 +134,8 @@ namespace SoccerBot
             Time.timeScale = paused ? 0f : 1f;
             if (paused)
                 return;
+
+            ApplyVrPresentationScale();
 
             if (State == ArenaRoundState.Live)
             {
@@ -295,9 +314,31 @@ namespace SoccerBot
             if (collider != null)
                 collider.sharedMaterial = _wallMaterial;
             Renderer renderer = wall.GetComponent<Renderer>();
-            if (renderer != null && _wallVisualMaterial != null)
-                renderer.sharedMaterial = _wallVisualMaterial;
+            if (renderer != null)
+                renderer.enabled = false;
+            CreateVisibleBoard(wall.transform, localScale.y);
             wall.AddComponent<ArenaBoundaryWall>().Configure(this, _ball);
+        }
+
+        private void CreateVisibleBoard(Transform wall, float colliderHeight)
+        {
+            if (_wallVisibleHeight <= 0f || _wallVisualMaterial == null)
+                return;
+
+            GameObject board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            board.name = "VisibleBoard";
+            board.layer = 2;
+            board.transform.SetParent(wall, false);
+            float parentHeight = Mathf.Max(0.01f, Mathf.Abs(colliderHeight));
+            float visibleHeight = Mathf.Min(Mathf.Max(0.02f, _wallVisibleHeight), parentHeight);
+            board.transform.localPosition = new Vector3(0f, -0.5f + visibleHeight / (parentHeight * 2f), 0f);
+            board.transform.localScale = new Vector3(1f, visibleHeight / parentHeight, 1f);
+            Collider boardCollider = board.GetComponent<Collider>();
+            if (boardCollider != null)
+                Destroy(boardCollider);
+            Renderer boardRenderer = board.GetComponent<Renderer>();
+            if (boardRenderer != null)
+                boardRenderer.sharedMaterial = _wallVisualMaterial;
         }
 
         public void NotifyGoal(BallController ball)
@@ -340,11 +381,24 @@ namespace SoccerBot
             if (_teammate == null || _player == null)
                 return;
 
-            Vector3 support = _player.position + FieldRight() * -2.2f + FieldForward() * 2.7f;
+            Vector3 support = CalculateTeammateSupportPosition();
             support = ClampActorPosition(support, 0.7f);
-            bool chasePass = _ballMotor.Owner == PossessionOwner.Teammate ||
-                             (FlatDistance(_teammate.position, ballPosition) < 2.2f && _ballMotor.Owner == PossessionOwner.Free);
-            MoveActor(_teammate, chasePass ? ballPosition : support, _teammateSpeed, ballPosition);
+            Vector3 ballVelocity = _ballMotor.Body != null ? _ballMotor.Body.linearVelocity : Vector3.zero;
+            Vector3 toTeammate = _teammate.position - ballPosition;
+            toTeammate.y = 0f;
+            Vector3 flatVelocity = new Vector3(ballVelocity.x, 0f, ballVelocity.z);
+            float movingToward = flatVelocity.sqrMagnitude > 0.0001f && toTeammate.sqrMagnitude > 0.0001f
+                ? Vector3.Dot(flatVelocity.normalized, toTeammate.normalized)
+                : 0f;
+            bool receivePass = ArenaGameplayRules.ShouldTeammateReceive(
+                _ballMotor.Owner,
+                FlatDistance(_teammate.position, ballPosition),
+                flatVelocity.magnitude,
+                movingToward,
+                _teammateReceiveRange,
+                _teammateReceiveMaxSpeed);
+
+            MoveActor(_teammate, receivePass ? ballPosition : support, _teammateSpeed, receivePass ? ballPosition : _player.position);
 
             if (Time.time < _teammateActionReadyAt || FlatDistance(_teammate.position, ballPosition) > 1.1f)
                 return;
@@ -371,10 +425,19 @@ namespace SoccerBot
             if (_opponent == null)
                 return;
 
+            if (_ballMotor != null && _ballMotor.IsServeProtected)
+            {
+                Vector3 hold = _field.transform.TransformPoint(new Vector3(1.45f, 0f, 1.65f));
+                MoveActor(_opponent, ClampActorPosition(hold, 0.6f), _opponentSpeed, ballPosition);
+                return;
+            }
+
             MoveActor(_opponent, ClampActorPosition(ballPosition, 0.6f), _opponentSpeed, ballPosition);
             if (Time.time < _opponentActionReadyAt || FlatDistance(_opponent.position, ballPosition) > 0.9f)
                 return;
             if (_ballMotor.Body.linearVelocity.magnitude > 6.5f)
+                return;
+            if (!ArenaGameplayRules.CanReachBall(_opponent.position, ballPosition, 0.9f, _aiReachHeight))
                 return;
 
             _opponentActionReadyAt = Time.time + _aiActionCooldown;
@@ -489,6 +552,89 @@ namespace SoccerBot
             _resetRoutine = null;
         }
 
+        private void ApplyVrPresentationScale()
+        {
+            if (_vrPresentationApplied || !IsVrProfile())
+                return;
+
+            _vrPresentationApplied = true;
+            float scale = Mathf.Clamp(_vrPresentationScale, 0.2f, 1f);
+            ScaleBall(scale);
+            ScaleActorVisual(_player, scale, false);
+            ScaleActorVisual(_teammate, scale, true);
+            ScaleActorVisual(_opponent, scale, true);
+            ScaleActorVisual(_goalkeeper, scale, true);
+            ScaleActorVisual(_robot, scale, true);
+            SetVrCameraHeight();
+            ScaleTrackedLegRig(scale);
+            Debug.Log($"[Arena] VR presentation scale applied profile={GameplayModeBootstrap.CurrentProfile} scale={scale:0.00} cameraHeight={_vrCameraHeight:0.00}");
+        }
+
+        private static bool IsVrProfile()
+        {
+            return GameplayModeBootstrap.CurrentProfile == ControlProfile.VrStriker ||
+                   GameplayModeBootstrap.CurrentProfile == ControlProfile.XrSimulator;
+        }
+
+        private void ScaleBall(float scale)
+        {
+            if (_ball == null)
+                return;
+
+            _ball.transform.localScale *= scale;
+            Rigidbody body = _ball.EnsurePhysicsComponents();
+            if (body != null)
+                body.mass = Mathf.Max(0.15f, body.mass * scale);
+        }
+
+        private void ScaleActorVisual(Transform actor, float scale, bool allowActorRoot)
+        {
+            Transform visual = FindVisualSource(actor, allowActorRoot);
+            if (visual == null)
+                return;
+
+            visual.localScale *= scale;
+            if (visual != actor)
+                visual.localPosition *= scale;
+        }
+
+        private void SetVrCameraHeight()
+        {
+            if (_player == null)
+                return;
+
+            Transform anchor = _player.Find("FpsAnchor");
+            if (anchor == null)
+                return;
+
+            Vector3 local = anchor.localPosition;
+            local.y = Mathf.Max(0.2f, _vrCameraHeight);
+            anchor.localPosition = local;
+        }
+
+        private void ScaleTrackedLegRig(float scale)
+        {
+            if (_player == null)
+                return;
+
+            QuestControllerLegRig rig = _player.GetComponent<QuestControllerLegRig>();
+            if (rig == null)
+                return;
+
+            rig.ConfigureRuntimeTuning(
+                rig.LeftPoseOffsetPosition,
+                rig.RightPoseOffsetPosition,
+                rig.LegScale * scale,
+                rig.FootColliderCenter,
+                rig.FootSize,
+                rig.ShinColliderCenter,
+                rig.ShinRadius,
+                rig.ShinHeight,
+                rig.LockFeetToGroundPlane,
+                rig.GroundPlaneY,
+                rig.SoleGroundClearance);
+        }
+
         private void FinishSession()
         {
             SetState(ArenaRoundState.Finished);
@@ -516,6 +662,34 @@ namespace SoccerBot
             look.y = 0f;
             if (look.sqrMagnitude > 0.0001f)
                 actor.rotation = Quaternion.Slerp(actor.rotation, Quaternion.LookRotation(look), 8f * Time.deltaTime);
+        }
+
+        private Vector3 CalculateTeammateSupportPosition()
+        {
+            UpdateTeammateDrift();
+            return ArenaGameplayRules.CalculateSupportPosition(
+                _player.position,
+                FieldForward(),
+                FieldRight(),
+                _teammateSupportSideOffset,
+                _teammateSupportAheadOffset,
+                _teammateDriftOffset);
+        }
+
+        private void UpdateTeammateDrift()
+        {
+            if (Time.time < _teammateDriftReadyAt)
+                return;
+
+            _teammateDriftReadyAt = Time.time + Mathf.Max(0.25f, _teammateDriftInterval);
+            if (UnityEngine.Random.value > Mathf.Clamp01(_teammateDriftChance))
+            {
+                _teammateDriftOffset = Vector3.zero;
+                return;
+            }
+
+            Vector2 offset = UnityEngine.Random.insideUnitCircle * Mathf.Max(0f, _teammateDriftRadius);
+            _teammateDriftOffset = FieldRight() * offset.x + FieldForward() * offset.y;
         }
 
         private Vector3 ClampActorPosition(Vector3 world, float padding)
@@ -589,7 +763,7 @@ namespace SoccerBot
                 renderer.material.color = new Color(0.12f, 0.36f, 0.95f);
         }
 
-        private static Transform FindVisualSource(Transform actor)
+        private static Transform FindVisualSource(Transform actor, bool allowActorRoot = false)
         {
             if (actor == null)
                 return null;
@@ -599,6 +773,8 @@ namespace SoccerBot
             Transform model = actor.Find("Model");
             if (model != null)
                 return model;
+            if (allowActorRoot && actor.GetComponentInChildren<Renderer>(true) != null)
+                return actor;
             foreach (Transform child in actor)
             {
                 if (child.GetComponentInChildren<Renderer>(true) != null)

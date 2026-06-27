@@ -26,12 +26,22 @@ namespace SoccerBot
         [SerializeField] private float _activeControlDuration = 0.35f;
         [SerializeField] private float _postKickAssistDelay = 0.5f;
 
+        [Header("Serve Protection")]
+        [SerializeField] private float _serveProtectionDuration = 1.2f;
+        [SerializeField] private float _aiReachHeight = 0.85f;
+
         [Header("Impulse")]
         [SerializeField] private Vector2 _passImpulseRange = new(3.2f, 7f);
         [SerializeField] private Vector2 _shotImpulseRange = new(5.5f, 10.5f);
         [SerializeField] private float _shotLift = 0.08f;
         [SerializeField] private float _tackleImpulse = 2.6f;
         [SerializeField] private float _maximumBallSpeed = 18f;
+
+        [Header("Rolling Drag")]
+        [SerializeField] private float _rollingDamping = 3.2f;
+        [SerializeField] private float _rollingFreeDelay = 0.18f;
+        [SerializeField] private float _rollingStopSpeed = 0.18f;
+        [SerializeField] private float _groundedTolerance = 0.06f;
 
         [Header("Aim Assist")]
         [SerializeField] private float _passAssistDegrees = 18f;
@@ -40,6 +50,7 @@ namespace SoccerBot
         public Rigidbody Body { get; private set; }
         public PossessionOwner Owner { get; private set; } = PossessionOwner.Free;
         public bool IsLive { get; private set; }
+        public bool IsServeProtected => IsLive && Time.time < _serveProtectedUntil;
         public string LastAction { get; private set; } = "READY";
         public BallActionSource LastActionSource { get; private set; } = BallActionSource.KeyboardMouse;
         public float Speed => Body != null ? Body.linearVelocity.magnitude : 0f;
@@ -54,6 +65,9 @@ namespace SoccerBot
         private float _activeControlUntil;
         private float _assistSuppressedUntil;
         private float _pendingVrPassUntil;
+        private float _serveProtectedUntil = -999f;
+        private bool _serveProtectionPending;
+        private float _lastImpulseAt = -999f;
 
         public void Configure(
             Transform player,
@@ -93,6 +107,7 @@ namespace SoccerBot
                 return;
 
             ClampBallSpeed();
+            ApplyRollingDamping();
             UpdatePossessionOwner();
             if (!IsLive || _player == null || Time.time < _assistSuppressedUntil)
                 return;
@@ -131,10 +146,17 @@ namespace SoccerBot
                 Owner = PossessionOwner.Free;
                 _activeControlUntil = 0f;
                 _assistSuppressedUntil = float.PositiveInfinity;
+                _serveProtectionPending = false;
+                _serveProtectedUntil = -999f;
             }
             else
             {
                 _assistSuppressedUntil = Time.time + 0.15f;
+                if (_serveProtectionPending)
+                {
+                    _serveProtectedUntil = Time.time + Mathf.Max(0f, _serveProtectionDuration);
+                    _serveProtectionPending = false;
+                }
             }
         }
 
@@ -158,7 +180,9 @@ namespace SoccerBot
             Body = _ball.EnsurePhysicsComponents();
             Body.linearVelocity = velocity;
             LastAction = "ROBOT SERVE";
+            _serveProtectionPending = true;
             _assistSuppressedUntil = Time.time + 0.35f;
+            StampImpulse();
         }
 
         public bool Execute(BallActionRequest request)
@@ -166,6 +190,12 @@ namespace SoccerBot
             if (!IsLive || Body == null || request.Actor == null)
             {
                 Resolve(request, false, "ACTION BLOCKED");
+                return false;
+            }
+
+            if (ArenaGameplayRules.ShouldBlockServeProtectedAction(request.Source, IsServeProtected))
+            {
+                Resolve(request, false, "SERVE PROTECTED");
                 return false;
             }
 
@@ -178,12 +208,20 @@ namespace SoccerBot
                 return false;
             }
 
+            if (request.Source == BallActionSource.AI &&
+                !ArenaGameplayRules.CanReachBall(request.Actor.position, transform.position, range, _aiReachHeight))
+            {
+                Resolve(request, false, $"{request.Kind.ToString().ToUpperInvariant()} - TOO HIGH");
+                return false;
+            }
+
             switch (request.Kind)
             {
                 case BallActionKind.Control:
                     Body.linearVelocity *= 0.32f;
                     Body.angularVelocity *= 0.4f;
                     _activeControlUntil = Time.time + _activeControlDuration;
+                    EndServeProtection(request.Source);
                     Resolve(request, true, "CONTROL");
                     return true;
 
@@ -201,6 +239,8 @@ namespace SoccerBot
                     Vector3 tackleDirection = ArenaGameplayRules.FlattenDirection(request.Direction, request.Actor.forward);
                     Body.AddForce((tackleDirection + Vector3.up * 0.03f).normalized * _tackleImpulse, ForceMode.Impulse);
                     _assistSuppressedUntil = Time.time + _postKickAssistDelay;
+                    StampImpulse();
+                    EndServeProtection(request.Source);
                     Resolve(request, true, "TACKLE");
                     return true;
             }
@@ -232,6 +272,8 @@ namespace SoccerBot
             Body.AddForce(direction * Mathf.Lerp(impulseRange.x, impulseRange.y, request.Power01), ForceMode.Impulse);
             _activeControlUntil = 0f;
             _assistSuppressedUntil = Time.time + _postKickAssistDelay;
+            StampImpulse();
+            EndServeProtection(request.Source);
         }
 
         private void UpdatePossessionOwner()
@@ -245,9 +287,12 @@ namespace SoccerBot
             float best = 1.05f;
             PossessionOwner owner = PossessionOwner.Free;
             ConsiderOwner(_player, PossessionOwner.Player, ref best, ref owner);
-            ConsiderOwner(_teammate, PossessionOwner.Teammate, ref best, ref owner);
-            ConsiderOwner(_opponent, PossessionOwner.Opponent, ref best, ref owner);
-            ConsiderOwner(_goalkeeper, PossessionOwner.Goalkeeper, ref best, ref owner);
+            if (!IsServeProtected)
+            {
+                ConsiderOwner(_teammate, PossessionOwner.Teammate, ref best, ref owner);
+                ConsiderOwner(_opponent, PossessionOwner.Opponent, ref best, ref owner);
+                ConsiderOwner(_goalkeeper, PossessionOwner.Goalkeeper, ref best, ref owner);
+            }
             Owner = Body != null && Body.linearVelocity.magnitude > 9f ? PossessionOwner.Free : owner;
         }
 
@@ -269,6 +314,61 @@ namespace SoccerBot
                 Body.linearVelocity = Body.linearVelocity.normalized * maxSpeed;
         }
 
+        private void ApplyRollingDamping()
+        {
+            if (Body == null || Body.isKinematic)
+                return;
+
+            Body.linearVelocity = ArenaGameplayRules.ApplyRollingDamping(
+                Body.linearVelocity,
+                IsRollingOnGround(),
+                Time.time - _lastImpulseAt,
+                _rollingFreeDelay,
+                _rollingDamping,
+                _rollingStopSpeed,
+                Time.fixedDeltaTime);
+
+            Vector3 horizontal = new Vector3(Body.linearVelocity.x, 0f, Body.linearVelocity.z);
+            if (horizontal.sqrMagnitude <= _rollingStopSpeed * _rollingStopSpeed)
+                Body.angularVelocity *= 0.5f;
+        }
+
+        private bool IsRollingOnGround()
+        {
+            if (Body == null)
+                return false;
+            if (Body.linearVelocity.y > 0.25f)
+                return false;
+
+            float radius = EstimateWorldRadius();
+            return transform.position.y <= radius + Mathf.Max(0f, _groundedTolerance);
+        }
+
+        private float EstimateWorldRadius()
+        {
+            SphereCollider sphere = GetComponent<SphereCollider>();
+            if (sphere == null)
+                return 0.12f;
+
+            Vector3 scale = transform.lossyScale;
+            float maxScale = Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)));
+            return Mathf.Max(0.03f, sphere.radius * maxScale);
+        }
+
+        private void StampImpulse()
+        {
+            _lastImpulseAt = Time.time;
+        }
+
+        private void EndServeProtection(BallActionSource source)
+        {
+            if (source == BallActionSource.AI)
+                return;
+
+            _serveProtectedUntil = -999f;
+            _serveProtectionPending = false;
+        }
+
         private void EnsurePhysicalInteractor()
         {
             _physicalInteractor = GetComponent<PhysicalBallInteractor>();
@@ -283,6 +383,7 @@ namespace SoccerBot
         {
             if (!IsLive || Body == null || data.BallBody != Body)
                 return;
+            EndServeProtection(BallActionSource.VrPhysical);
             if (data.ShootIntentHeld)
                 _pendingVrPassUntil = Time.time + 0.5f;
             if (data.ContactSpeed < 0.3f)
@@ -303,6 +404,8 @@ namespace SoccerBot
                 : BallActionSource.VrPhysical;
             var request = new BallActionRequest(kind, source, data.Source != null ? data.Source.transform : _player, direction, data.Power01);
             _assistSuppressedUntil = Time.time + _postKickAssistDelay;
+            StampImpulse();
+            EndServeProtection(source);
             Resolve(request, true, kind == BallActionKind.Pass ? "VR PASS" : "VR SHOT");
         }
 

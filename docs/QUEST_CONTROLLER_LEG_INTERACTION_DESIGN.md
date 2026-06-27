@@ -626,3 +626,28 @@ A: 完全物理化
 - Quest 真机中脚/鞋位置应跟随左右手柄真实位置，转动手柄时脚模型同步旋转。
 - 默认 visual-only 时脚碰球不会改球和比赛流程。打开脚触球后，Console 会打印 `[TrackedLeg]`；比赛流程消费触球时会打印 `[MatchFlow] Foot receive` 或 `[MatchFlow] Foot shot`。
 - 如 `http://localhost:8090/health` 返回 Invalid host，用 `http://127.0.0.1:8090/health` 访问 UnitySkills。
+
+## 2026-06-27 VR Handoff Notes
+
+当前 VR 设备在身边，下一步优先做 Quest / VR 现场测试，而不是继续改 PC Arena 镜头。
+
+### Record These During Test
+
+- 启动方式：Unity Play Mode + Quest Link / APK / XR Simulator。
+- 当前模式：Training / ArenaAttack；控制档：KeyboardMouse / Gamepad / VrStriker / XrSimulator。
+- 头显里是否能看到主菜单、球场、球、玩家脚 / 鞋。
+- `LeftTrackedLeg` / `RightTrackedLeg` 是否都出现，是否分别跟随左右手柄。
+- 转动手柄时脚 / 鞋是否同步旋转，是否仍像一个僵硬整体。
+- 可见脚碰到球时，球是否有反应。
+- 右 trigger 是否只作为 pass intent，是否会提前锁死或打断自由触球。
+- 高速触球是否能形成直接射门。
+- 球进对方球门是否判 `GOAL`，踢出边线 / 底线是否判 `OUT OF BOUNDS` / `JUST MISSED`。
+- 如果球没反应，记录 overlay 中的 tracking、contact zone、closest-point distance、foot speed、ball velocity。
+- 如果球突然回中心或半陷地面，记录触发前最后一个动作：普通触球 / 右 trigger pass intent / 到队友附近 / 进球口 / 出界。
+
+### Next Chat Starting Point
+
+- 如果 VR 脚触球可用：优先调手感参数，包括 impulse、lift、cooldown、assist distance、foot collider center / size。
+- 如果 VR 脚可见但触球不可用：先查 `TrackedLegController` contact 发布、ball layer mask、`PhysicalBallInteractor` 是否挂载、overlay closest-point distance。
+- 如果 VR 脚不可见或左右绑定错：先查 `QuestControllerLegRig` 是否生成左右腿、handedness 绑定、input action diagnostics。
+- PC Arena 的“视角没有变化、射门 / 传球按不了”另开只读诊断，不和 VR 现场测试混在一起修。

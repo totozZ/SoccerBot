@@ -25,6 +25,8 @@ namespace SoccerBot
         [SerializeField] private float _maxImpulse = 5.2f;
         [SerializeField, Range(0f, 1f)] private float _swingDirectionWeight = 0.75f;
         [SerializeField] private float _lift = 0.09f;
+        [SerializeField] private float _instepDynamicLift = 0.16f;
+        [SerializeField] private float _maxDynamicLift = 0.32f;
         [SerializeField] private float _spinTorque = 0.06f;
         [SerializeField] private float _impulseCooldown = 0.12f;
         [SerializeField] private bool _debugImpulses = true;
@@ -142,7 +144,9 @@ namespace SoccerBot
             Vector3 swing = data.SwingDirection.sqrMagnitude > 0.0001f ? data.SwingDirection.normalized : transform.forward;
             Vector3 face = data.FootForward.sqrMagnitude > 0.0001f ? data.FootForward.normalized : swing;
             Vector3 direction = Vector3.Slerp(face, swing, _swingDirectionWeight);
-            direction.y += _lift;
+            float contactAngle = CalculateContactAngle(data, face);
+            float dynamicLift = CalculateDynamicLift(data, swing, contactAngle);
+            direction.y += dynamicLift;
             if (direction.sqrMagnitude < 0.0001f)
                 direction = swing;
             direction.Normalize();
@@ -163,9 +167,48 @@ namespace SoccerBot
                 _ballBody.AddTorque(torqueAxis.normalized * impulse * _spinTorque, ForceMode.Impulse);
 
             if (_debugImpulses)
-                Debug.Log($"[PhysicalBall] {data.Foot} impulse={impulse:0.00} dir={direction} speed={data.ContactSpeed:0.00} assist={shotAssist01:0.00}");
+            {
+                Debug.Log(
+                    $"[PhysicalBall] {data.Foot} zone={data.ContactZone} impulse={impulse:0.00} " +
+                    $"dir={direction} speed={data.ContactSpeed:0.00} lift={dynamicLift:0.00} " +
+                    $"contactAngle={contactAngle:0} assist={shotAssist01:0.00}");
+            }
 
             PhysicalImpulseApplied?.Invoke(data, direction, impulse);
+        }
+
+        private float CalculateDynamicLift(FootContactData data, Vector3 swing, float contactAngle)
+        {
+            string zone = data.ContactZone ?? string.Empty;
+            float zoneScale = 0.45f;
+            if (zone.IndexOf("Instep", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScale = 1f;
+            else if (zone.IndexOf("Toe", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScale = 0.35f;
+            else if (zone.IndexOf("Sole", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScale = 0.12f;
+            else if (zone.IndexOf("Shin", StringComparison.OrdinalIgnoreCase) >= 0)
+                zoneScale = 0.08f;
+
+            float upwardSwing = Mathf.InverseLerp(0.02f, 0.65f, swing.y);
+            float angleScore = 1f - Mathf.InverseLerp(30f, 125f, contactAngle);
+            float dynamic = _instepDynamicLift * zoneScale * Mathf.Lerp(0.35f, 1f, upwardSwing) * Mathf.Lerp(0.45f, 1f, angleScore);
+            float baseLift = _lift * zoneScale;
+            return Mathf.Clamp(baseLift + dynamic, 0f, Mathf.Max(0f, _maxDynamicLift));
+        }
+
+        private static float CalculateContactAngle(FootContactData data, Vector3 face)
+        {
+            Vector3 ballDirection = data.BallClosestPoint - data.FootClosestPoint;
+            if (ballDirection.sqrMagnitude < 0.0001f)
+                ballDirection = data.BallBody != null
+                    ? data.BallBody.worldCenterOfMass - data.FootPosition
+                    : data.SwingDirection;
+
+            if (ballDirection.sqrMagnitude < 0.0001f || face.sqrMagnitude < 0.0001f)
+                return 0f;
+
+            return Vector3.Angle(face.normalized, ballDirection.normalized);
         }
 
         private void ApplyPassiveControl(FootContactData data)

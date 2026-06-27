@@ -1,6 +1,6 @@
 # SoccerBot 功能与 Bug 总览
 
-更新时间：2026-06-22
+更新时间：2026-06-27
 定位：这里只放“现在做到了什么、还没做什么、bug 是什么状态”的短说明。详细设计和实现记录放在对应文档里。
 
 ## 维护规则
@@ -16,7 +16,7 @@
 | 项 | 状态 | 简短说明 | 详情 |
 |---|---|---|---|
 | 项目主线 | Arena 首版已实现 | 默认进入键鼠第三人称单门 Arena；旧 Training 模式通过 `F8` 保留 | [PLAN](../PLAN.md) |
-| 当前重点 | P0 Arena 手感验证 | 先用键鼠调物理控球、回弹墙、传射、抢断、90 秒回合和轻量 AI；Quest 真机验证后移 | [PLAN](../PLAN.md) |
+| 当前重点 | P0 Quest 真机现场测试 | VR 设备当前可用，先验证头显视角、菜单、脚部追踪、脚触球、右 trigger pass intent、直接射门和进球 / 出界判定；PC Arena 键鼠传射先做只读诊断再改 | [PLAN](../PLAN.md) |
 | 主要风险 | Quest 真机体验 | 物理脚感、帧率、UI 可读性和 APK 复测仍是本期最大不确定性 | [Quest 交互设计](QUEST_CONTROLLER_LEG_INTERACTION_DESIGN.md) |
 
 ## 优先级队列
@@ -91,6 +91,7 @@
 |---|---|---|---|
 | Arena 左右键传射演示效果奇怪 | 已记录 / 待下一版描述 | 当前左键射门、右键传球的方向、力度、球响应和视觉区别不自然，但具体复现尚未锁定 | 下一版按 [Arena 操作说明](ARENA_ATTACK_OPERATION_GUIDE.md) 的模板补预期/实际效果，再改逻辑或参数 |
 | Arena 第三人称摄像机跟踪不理想 | 已记录 / 待改静态镜头 | 当前镜头跟随玩家并由鼠标旋转，构图与观察稳定性未做好 | 改成对方球门上方朝向球场的静态透视镜头，同时将传射瞄准与 camera forward 解耦 |
+| 2026-06-27 静态镜头 / 传射解耦尝试未采纳 | 已回退 / 待重新诊断 | 尝试改静态镜头后，实际试玩反馈是视角没有变化，射门 / 传球仍然按不了；本次代码和文档改动已回退，不作为当前基线 | 下个对话先只读排查真实生效的相机链路、输入事件、`GameplayEnabled`、动作 range 和 `ArenaBallMotor.Execute(...)` 失败原因，再决定修改点 |
 | 队友/对手/守门员缺少实时 AI 互动 | 已缓解 / 待 Play Mode 调参 | `FieldAIController` 已补强状态事件、传向队友识别、射门威胁识别和 Possession 物理射门门将扑救入口；仍需在 Play Mode / Quest Link 调速度、距离和概率，确认不会抢走玩家主体验 | 复测 P8.5 AI 行为手感并微调参数 |
 | AI 小人移动缺少动态动作 | 已缓解 / 待 Play Mode 与 Quest 复测 | `NpcAnimationPresenter` 已按实际速度切换 LowPolyPeople 动画，并给门将加入 Saving 侧扑；无 Animator 时有呼吸、起伏和前倾兜底 | 复测跑步切换、侧扑方向/幅度和 Quest 开销 |
 | 脚部触球不稳定 | 已缓解 / 待 Quest 复测 | `TrackedLegController` 已用 `OverlapBoxNonAlloc` 在预测脚盒周围做最近点补触发；`PhysicalTouchTest` overlay 可直接看左右脚 tracking 是否有效；可见鞋碰到球但 trigger 漏帧时会发布 `FootBoxProximity` 接触 | 用 Quest Link / APK 验证漏触是否减少，再用 `PhysicalTouchTest`、gizmos、closest-point overlay、tracking overlay 和 F2 调参窗微调 assist padding / distance、`Foot Collider Center` / `Foot Size` / offset |

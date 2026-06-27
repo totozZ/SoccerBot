@@ -1,6 +1,6 @@
 # SoccerBot 进度速查
 
-> 更新时间：2026-06-22
+> 更新时间：2026-06-27
 > 规则：每次功能变动或 bug 修复后，默认同步更新本文件、[docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 和对应详细设计文档；不需要用户额外提醒。
 
 ## 当前结论
@@ -8,7 +8,8 @@
 - 主线原型已跑通：PC / Quest 基础流程、接球、反抢、射门、回放和评分已经形成闭环。
 - 当前优先级：P0 主线切换为键鼠优先的 `Arena Attack`；现有 AI、角色动画和 Quest 脚部触球作为共用能力继续保留。
 - Arena 默认是单门 90 秒计分赛：无越位/犯规/界外球，边墙回弹；PC 全场第三人称，VR 使用同规则的前场射手角色。
-- 当前试玩已记录两项现象：左右键传射演示效果较怪、第三人称摄像机跟踪未做好；本版本先记录，等下一版补具体复现后再改传射。
+- 当前试玩已记录新现象：第三人称视角实际没有按预期变化，射门 / 传球仍然按不了；刚才尝试的静态镜头 / 传射解耦改动已回退，不作为当前基线。
+- 现在 VR 设备在身边，优先现场测试 Quest / VR 脚部交互效果；PC Arena 镜头和键鼠传射先暂停写代码，下一轮先做只读诊断再改。
 - P1 LLM AI 已接 MVP；P1.5 免费资源小人的基础动态/跑步动画层已完成一版；P2 继续整体画面优化；其他事项统一降到 P3。
 - 所有功能/bug 总览见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 - 旧版长计划已归档到 [docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md](docs/PROJECT_PLAN_ARCHIVE_2026-06-14.md)。
@@ -47,12 +48,12 @@
 
 ## 下一步
 
-1. P0-Arena：下一版先把比赛镜头改为固定在对方球门上方、朝球场中心/对面半场的静态透视镜头，并把传射瞄准从摄像机 forward 中拆出。
-2. P0-Arena：按 [Arena 操作说明](docs/ARENA_ATTACK_OPERATION_GUIDE.md) 的模板补充左右键异常的具体预期/实际效果，再调整传射方向、力度、辅助或键位，不先盲调。
-3. P0-Arena：Play Mode 连续跑至少 10 次发球，验证 `WASD / Shift / E / RMB / LMB / Space`、墙面回弹、进球、被断、门将控制、卡球重置和 90 秒净计时。
-4. P0-Arena：调物理控球弹簧、墙面 70% 回弹、后卫压迫速度和门将扑救范围；重点确认球不会瞬移回中心或半陷地面。
-5. P0-Arena：用 `F8` 回归旧 Training 流程；用 `F7` 验证 Gamepad 与 XR Simulator 都进入统一动作结果层。
-6. P0：无 VR 期间先保留 Quest 接口级测试；拿到 Quest 后再验证双脚实体触球、延迟、舒适度和前场射手区尺度。
+1. P0-Quest：现在先做 VR 现场测试，确认 Main 场景 / Arena 或 Training 中头显视角、菜单可见性、左右脚模型、脚触球、右 trigger pass intent、直接射门、进球 / 出界判定是否可用。
+2. P0-Quest：如果可见脚碰球但没反应，优先记录 `PhysicalTouchTest` overlay 里的左右脚 tracking、contact zone、closest-point distance、foot speed 和 ball velocity。
+3. P0-Arena：下个对话先做只读诊断，不直接改代码；确认当前真实生效的相机链路、`ArenaPlayerController` 是否挂载 / 启用、输入是否触发 `BallActionRequested`、`ArenaBallMotor.Execute(...)` 是否因为 `GameplayEnabled` / range / IsLive 失败。
+4. P0-Arena：查明“射门 / 传球按不了”的实际失败点后，再决定是修输入绑定、动作启用时机、球距离判定、控制档切换，还是镜头 / aim 方案。
+5. P0-Arena：等传射能按且能看到调试面板结果后，再重新评估静态镜头，不再先改视角方案。
+6. P0-Arena：Play Mode 连续跑至少 10 次发球，验证 `WASD / Shift / E / RMB / LMB / Space`、墙面回弹、进球、被断、门将控制、卡球重置和 90 秒净计时。
 
 ## Arena 操作与规则
 
